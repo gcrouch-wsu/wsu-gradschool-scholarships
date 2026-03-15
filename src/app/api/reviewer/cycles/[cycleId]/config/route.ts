@@ -82,16 +82,16 @@ export async function GET(
   const columns = schema?.columns ?? [];
   const columnOptions: Record<number, string[]> = {};
   for (const col of columns) {
-    if (col.options?.length && liveColumnIds.has(col.id)) columnOptions[col.id] = col.options;
+    if (col.options?.length && liveColumnIds.has(String(col.id))) columnOptions[col.id] = col.options;
   }
 
   const validFields = fieldConfigs.filter(
     (f) =>
       (f.purpose !== "attachment" && f.display_type !== "attachment_list") &&
-      liveColumnIds.has(f.source_column_id)
+      liveColumnIds.has(String(f.source_column_id))
   );
   const validEditableIds = editPermissions
-    .filter((p) => liveColumnIds.has(p.source_column_id))
+    .filter((p) => liveColumnIds.has(String(p.source_column_id)))
     .map((p) => p.source_column_id);
 
   const showAttachments = fieldConfigs.some(

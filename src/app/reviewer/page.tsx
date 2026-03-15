@@ -31,10 +31,10 @@ export default async function ReviewerPage() {
     <div className="min-h-screen bg-zinc-50">
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/reviewer" className="font-semibold text-zinc-900">
-            Scholarship Review Platform
+          <Link href="/reviewer" className="font-semibold text-[var(--wsu-crimson)]">
+            WSU Scholarship Review
           </Link>
-          <Link href="/admin" className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href="/admin" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
             Admin
           </Link>
         </div>

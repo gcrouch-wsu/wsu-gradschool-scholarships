@@ -1,11 +1,17 @@
 @import "tailwindcss";
 
+/* WSU brand colors */
 :root {
+  --wsu-crimson: #A60F2D;
+  --wsu-gray: #4D4D4D;
+  --wsu-crimson-hover: #8a0c25;
   --background: #ffffff;
   --foreground: #171717;
 }
 
 @theme inline {
+  --color-wsu-crimson: var(--wsu-crimson);
+  --color-wsu-gray: var(--wsu-gray);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);

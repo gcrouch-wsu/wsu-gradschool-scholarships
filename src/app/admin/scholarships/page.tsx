@@ -39,7 +39,7 @@ export default async function ScholarshipsPage() {
         {isPlatformAdmin && (
           <Link
             href="/admin/scholarships/new"
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
           >
             Add program
           </Link>

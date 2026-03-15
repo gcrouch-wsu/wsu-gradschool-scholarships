@@ -100,7 +100,7 @@ export async function GET(
     [user.id, cycleId, rowIdNum]
   );
 
-  const validConfigs = fieldConfigs.filter((f) => liveColumnIds.has(f.source_column_id));
+  const validConfigs = fieldConfigs.filter((f) => liveColumnIds.has(String(f.source_column_id)));
   const fields = validConfigs.map((f) => ({
     fieldKey: f.field_key,
     sourceColumnId: f.source_column_id,
@@ -156,7 +156,9 @@ export async function POST(
     [cycleId, data.roleId]
   );
   const editableIds = new Set(
-    editable.map((e) => e.source_column_id).filter((id) => liveColumnIds.has(id))
+    editable
+      .map((e) => String(e.source_column_id))
+      .filter((id) => liveColumnIds.has(id))
   );
 
   const body = await request.json();
@@ -169,7 +171,7 @@ export async function POST(
   }
 
   const cells = updates.filter((c) =>
-    c.columnId != null && editableIds.has(c.columnId)
+    c.columnId != null && editableIds.has(String(c.columnId))
   );
   if (cells.length === 0) {
     return NextResponse.json(

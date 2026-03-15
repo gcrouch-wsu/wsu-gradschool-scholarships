@@ -33,7 +33,7 @@ export async function GET(
 
   const { rows: fieldConfigs } = await query<{
     field_key: string;
-    source_column_id: number;
+    source_column_id: number | string;
     source_column_title: string;
     display_label: string;
   }>(
@@ -41,9 +41,11 @@ export async function GET(
     [cycleId]
   );
 
-  const driftedColumns = fieldConfigs.filter(
-    (f) => f.source_column_id !== 0 && !liveColumnIds.has(f.source_column_id)
-  );
+  const driftedColumns = fieldConfigs.filter((f) => {
+    const sid = f.source_column_id;
+    if (sid === 0 || sid === "0") return false;
+    return !liveColumnIds.has(String(sid));
+  });
 
   return NextResponse.json({
     ok: true,

@@ -26,35 +26,35 @@ export default async function AdminLayout({
     <div className="min-h-screen bg-zinc-50">
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/admin" className="font-semibold text-zinc-900">
-            Scholarship Review Platform
+          <Link href="/admin" className="font-semibold text-[var(--wsu-crimson)]">
+            WSU Scholarship Review
           </Link>
-          <Link href="/reviewer" className="text-sm text-zinc-600 hover:text-zinc-900">
+          <Link href="/reviewer" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
             My scholarships
           </Link>
           <nav className="flex items-center gap-4">
-            <Link href="/admin/scholarships" className="text-sm text-zinc-600 hover:text-zinc-900">
+            <Link href="/admin/scholarships" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
               Scholarships
             </Link>
             {user.is_platform_admin && (
-              <Link href="/admin/users" className="text-sm text-zinc-600 hover:text-zinc-900">
+              <Link href="/admin/users" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
                 Users
               </Link>
             )}
             {user.is_platform_admin && (
               <>
-                <Link href="/admin/audit" className="text-sm text-zinc-600 hover:text-zinc-900">
+                <Link href="/admin/audit" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
                   Audit
                 </Link>
-                <Link href="/admin/settings" className="text-sm text-zinc-600 hover:text-zinc-900">
+                <Link href="/admin/settings" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
                   Settings
                 </Link>
-                <Link href="/admin/connections" className="text-sm text-zinc-600 hover:text-zinc-900">
+                <Link href="/admin/connections" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
                   Connections
                 </Link>
               </>
             )}
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-[var(--wsu-gray)]">
               {user.first_name} {user.last_name}
             </span>
             <LogoutButton />

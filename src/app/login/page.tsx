@@ -43,8 +43,8 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-100">
       <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-xl font-semibold text-zinc-900">
-          Scholarship Review Platform
+        <h1 className="mb-6 text-xl font-semibold text-[var(--wsu-crimson)]">
+          WSU Scholarship Review
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -81,7 +81,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="w-full rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>

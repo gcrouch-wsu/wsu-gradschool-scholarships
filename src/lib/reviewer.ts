@@ -5,8 +5,8 @@ import { query } from "./db";
 import { decrypt } from "./encryption";
 import { getSheetRows, getSheetSchema } from "./smartsheet";
 
-/** Fetch live column IDs from Smartsheet for a cycle. Returns null if fetch fails. */
-export async function getLiveColumnIds(cycleId: string): Promise<Set<number> | null> {
+/** Fetch live column IDs from Smartsheet for a cycle. Returns null if fetch fails. Uses strings to avoid BIGINT/Number mismatch. */
+export async function getLiveColumnIds(cycleId: string): Promise<Set<string> | null> {
   const { rows: cycles } = await query<{ connection_id: string; sheet_id: number }>(
     "SELECT connection_id, sheet_id FROM scholarship_cycles WHERE id = $1",
     [cycleId]
@@ -30,7 +30,7 @@ export async function getLiveColumnIds(cycleId: string): Promise<Set<number> | n
   const result = await getSheetSchema(token, cycle.sheet_id);
   if (!result.ok || !result.sheet?.columns) return null;
 
-  return new Set(result.sheet.columns.map((c) => c.id));
+  return new Set(result.sheet.columns.map((c) => String(c.id)));
 }
 
 export async function getReviewerNominees(

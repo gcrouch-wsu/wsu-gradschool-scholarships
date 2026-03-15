@@ -245,11 +245,34 @@ export function FieldMappingBuilder({
           )}
         </div>
 
+        <p className="mb-2 text-xs text-zinc-500">
+          Drag to reorder. Order determines display in reviewer layout.
+        </p>
         <div className="space-y-2">
           {mapped.map((m, idx) => (
             <div
               key={m.fieldKey}
-              className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", String(idx));
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                if (fromIdx === idx || isNaN(fromIdx)) return;
+                setMapped((prev) => {
+                  const next = [...prev];
+                  const [removed] = next.splice(fromIdx, 1);
+                  next.splice(idx, 0, removed);
+                  return next;
+                });
+              }}
+              className="flex cursor-grab flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3 active:cursor-grabbing"
             >
               <span className="font-medium text-zinc-700">{m.sourceColumnTitle}</span>
               <select
@@ -432,7 +455,7 @@ export function FieldMappingBuilder({
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save configuration"}
         </button>
