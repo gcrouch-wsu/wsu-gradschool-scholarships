@@ -13,7 +13,14 @@ interface Field {
   displayLabel: string;
   displayType: string;
   canEdit: boolean;
+  sectionKey?: string;
   value: unknown;
+}
+
+interface ViewSection {
+  section_key: string;
+  label: string;
+  sort_order: number;
 }
 
 export function ReviewerScoreForm({
@@ -34,6 +41,9 @@ export function ReviewerScoreForm({
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [nomineeIds, setNomineeIds] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<{ id: number; name: string; url?: string }[]>([]);
+  const [viewType, setViewType] = useState<string>("tabbed");
+  const [viewSections, setViewSections] = useState<ViewSection[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("main");
 
   const loadRow = useCallback(async () => {
     setLoading(true);
@@ -67,6 +77,11 @@ export function ReviewerScoreForm({
       setColumnOptions(configData.columnOptions ?? {});
       const fieldsData = rowData.fields ?? [];
       setFields(fieldsData);
+      const vType = configData.viewType ?? "tabbed";
+      const vSections = configData.viewSections ?? [];
+      setViewType(vType);
+      setViewSections(vSections);
+      if (vSections.length > 0) setActiveTab(vSections[0].section_key);
       const initial: Record<number, unknown> = {};
       for (const f of fieldsData) {
         initial[f.sourceColumnId] = f.value;
@@ -143,6 +158,56 @@ export function ReviewerScoreForm({
 
   const editableFields = fields.filter((f) => f.canEdit);
   const readOnlyFields = fields.filter((f) => !f.canEdit);
+  const sections = viewSections.length > 0
+    ? viewSections
+    : [
+        { section_key: "narrative", label: "Narrative & details", sort_order: 0 },
+        { section_key: "scores", label: "Scores & comments", sort_order: 1 },
+      ];
+  const useTabs = viewType === "tabbed" && sections.length > 0;
+  const fieldsBySection = sections.reduce((acc, s) => {
+    acc[s.section_key] = fields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
+    return acc;
+  }, {} as Record<string, Field[]>);
+
+  function renderReadOnlyField(f: Field) {
+    return (
+      <div key={f.fieldKey}>
+        <div className="text-xs font-medium text-zinc-500">{f.displayLabel}</div>
+        <div className="mt-1 whitespace-pre-wrap text-zinc-900">
+          {String(edits[f.sourceColumnId] ?? f.value ?? "")}
+        </div>
+      </div>
+    );
+  }
+  function renderEditableField(f: Field) {
+    return (
+      <div key={f.fieldKey}>
+        <label className="block text-sm font-medium text-zinc-700">{f.displayLabel}</label>
+        {f.displayType === "score_select" ? (
+          <select
+            value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
+            onChange={(e) => handleChange(f.sourceColumnId, e.target.value || null)}
+            className="mt-1 block w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="">— Select —</option>
+            {(columnOptions[f.sourceColumnId] ?? []).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <textarea
+            value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
+            onChange={(e) => handleChange(f.sourceColumnId, e.target.value)}
+            rows={4}
+            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mt-6 space-y-6">
@@ -170,59 +235,42 @@ export function ReviewerScoreForm({
         </div>
       )}
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-zinc-900">Narrative & details</h2>
-        <div className="space-y-3">
-          {readOnlyFields.map((f) => (
-            <div key={f.fieldKey}>
-              <div className="text-xs font-medium text-zinc-500">
-                {f.displayLabel}
-              </div>
-              <div className="mt-1 whitespace-pre-wrap text-zinc-900">
-                {String(edits[f.sourceColumnId] ?? f.value ?? "")}
-              </div>
-            </div>
-          ))}
+      {useTabs ? (
+        <div className="rounded-lg border border-zinc-200 bg-white">
+          <div className="flex border-b border-zinc-200">
+            {sections.map((s) => (
+              <button
+                key={s.section_key}
+                type="button"
+                onClick={() => setActiveTab(s.section_key)}
+                className={`rounded-t px-4 py-2 text-sm font-medium ${
+                  activeTab === s.section_key
+                    ? "border-b-2 border-zinc-900 bg-white text-zinc-900 -mb-px"
+                    : "bg-zinc-50 text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <div className="p-4">
+            {(fieldsBySection[activeTab] ?? []).map((f) =>
+              f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+            )}
+          </div>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-zinc-900">Your scores & comments</h2>
-        <div className="space-y-4">
-          {editableFields.map((f) => (
-            <div key={f.fieldKey}>
-              <label className="block text-sm font-medium text-zinc-700">
-                {f.displayLabel}
-              </label>
-              {f.displayType === "score_select" ? (
-                <select
-                  value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
-                  onChange={(e) =>
-                    handleChange(f.sourceColumnId, e.target.value || null)
-                  }
-                  className="mt-1 block w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
-                >
-                  <option value="">— Select —</option>
-                  {(columnOptions[f.sourceColumnId] ?? []).map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <textarea
-                  value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
-                  onChange={(e) =>
-                    handleChange(f.sourceColumnId, e.target.value)
-                  }
-                  rows={4}
-                  className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      ) : (
+        <>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <h2 className="mb-3 font-medium text-zinc-900">Narrative & details</h2>
+            <div className="space-y-3">{readOnlyFields.map(renderReadOnlyField)}</div>
+          </div>
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <h2 className="mb-3 font-medium text-zinc-900">Your scores & comments</h2>
+            <div className="space-y-4">{editableFields.map(renderEditableField)}</div>
+          </div>
+        </>
+      )}
 
       {error && (
         <div

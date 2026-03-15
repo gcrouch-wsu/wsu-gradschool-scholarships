@@ -68,6 +68,40 @@ export async function GET(
     [cycleId, roleId]
   );
 
+  const { rows: viewConfigs } = await query<{ view_type: string }>(
+    "SELECT view_type FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const { rows: viewSections } = await query<{
+    id: string;
+    section_key: string;
+    label: string;
+    sort_order: number;
+  }>(
+    `SELECT vs.id, vs.section_key, vs.label, vs.sort_order
+     FROM view_sections vs
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1 ORDER BY vs.sort_order`,
+    [cycleId]
+  );
+  const { rows: sectionFields } = await query<{
+    view_section_id: string;
+    field_config_id: string;
+  }>(
+    `SELECT sf.view_section_id, sf.field_config_id
+     FROM section_fields sf
+     JOIN view_sections vs ON vs.id = sf.view_section_id
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1`,
+    [cycleId]
+  );
+  const fieldIdToSectionKey = Object.fromEntries(
+    sectionFields.map((sf) => {
+      const vs = viewSections.find((s) => s.id === sf.view_section_id);
+      return [sf.field_config_id, vs?.section_key ?? "main"];
+    })
+  );
+
   const { rows: editPermissions } = await query<{
     field_config_id: string;
     source_column_id: number;
@@ -97,11 +131,16 @@ export async function GET(
       columnOptions[col.id] = col.options;
   }
 
-  const validFields = fieldConfigs.filter(
-    (f) =>
-      (f.purpose !== "attachment" && f.display_type !== "attachment_list") &&
-      liveColumnIds.has(String(f.source_column_id))
-  );
+  const validFields = fieldConfigs
+    .filter(
+      (f) =>
+        (f.purpose !== "attachment" && f.display_type !== "attachment_list") &&
+        liveColumnIds.has(String(f.source_column_id))
+    )
+    .map((f) => ({
+      ...f,
+      section_key: fieldIdToSectionKey[f.id] ?? "main",
+    }));
   const validEditableIds = editPermissions
     .filter((p) => liveColumnIds.has(String(p.source_column_id)))
     .map((p) => p.source_column_id);
@@ -115,5 +154,11 @@ export async function GET(
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,
+    viewType: viewConfigs[0]?.view_type ?? "tabbed",
+    viewSections: viewSections.map((s) => ({
+      section_key: s.section_key,
+      label: s.label,
+      sort_order: s.sort_order,
+    })),
   });
 }

@@ -36,12 +36,22 @@ export async function GET(
   }
 
   const schema = cycle.sheet_schema_snapshot_json as {
-    columns?: Array<{ id: number; index: number; title: string; type: string; options?: string[]; locked?: boolean }>;
+    columns?: Array<{ id: number; index: number; title: string; type?: string; options?: string[]; locked?: boolean }>;
   };
   const sheetColumns = schema.columns ?? [];
   const columns = [
-    { id: 0, index: -1, title: "Attachments (row-level)", type: "attachment_list", locked: false },
-    ...sheetColumns.map((c) => ({ ...c, locked: c.locked ?? false })),
+    { id: 0, index: -1, title: "Attachments (row-level)", type: "attachment_list", options: undefined, locked: false },
+    ...sheetColumns.map((c) => {
+      const rawType = c.type;
+      return {
+        id: c.id,
+        index: c.index,
+        title: c.title,
+        type: typeof rawType === "string" && rawType ? rawType : "TEXT_NUMBER",
+        options: c.options,
+        locked: c.locked ?? false,
+      };
+    }),
   ];
 
   const { rows: fieldConfigs } = await query<{
@@ -85,12 +95,41 @@ export async function GET(
     cycleId,
   ]);
 
+  const { rows: viewSections } = await query<{
+    id: string;
+    view_config_id: string;
+    section_key: string;
+    label: string;
+    sort_order: number;
+  }>(
+    `SELECT vs.id, vs.view_config_id, vs.section_key, vs.label, vs.sort_order
+     FROM view_sections vs
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1 ORDER BY vs.sort_order`,
+    [cycleId]
+  );
+
+  const { rows: sectionFields } = await query<{
+    view_section_id: string;
+    field_config_id: string;
+    sort_order: number;
+  }>(
+    `SELECT sf.view_section_id, sf.field_config_id, sf.sort_order
+     FROM section_fields sf
+     JOIN view_sections vs ON vs.id = sf.view_section_id
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1`,
+    [cycleId]
+  );
+
   return NextResponse.json({
     columns,
     fieldConfigs,
     roles,
     permissions,
     viewConfigs,
+    viewSections,
+    sectionFields,
   });
 }
 
@@ -114,6 +153,7 @@ export async function POST(
   const {
     fieldConfigs,
     viewType,
+    sections,
   }: {
     fieldConfigs: Array<{
       fieldKey: string;
@@ -123,9 +163,11 @@ export async function POST(
       displayLabel: string;
       displayType: string;
       sortOrder: number;
+      sectionKey?: string;
       permissions?: Array<{ roleId: string; canView: boolean; canEdit: boolean }>;
     }>;
     viewType?: string;
+    sections?: Array<{ section_key: string; label: string; sort_order: number }>;
   } = body;
 
   if (!Array.isArray(fieldConfigs)) {
@@ -206,23 +248,38 @@ export async function POST(
     );
     const viewConfigId = vcRows[0]?.id;
     if (viewConfigId) {
-      const { rows: vsRows } = await tx<{ id: string }>(
-        `INSERT INTO view_sections (view_config_id, section_key, label, sort_order)
-         VALUES ($1, 'main', 'Review', 0)
-         RETURNING id`,
-        [viewConfigId]
-      );
-      const viewSectionId = vsRows[0]?.id;
-      if (viewSectionId) {
-        const { rows: fcRows } = await tx<{ id: string }>(
-          "SELECT id FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
-          [cycleId]
+      const sectionList = Array.isArray(sections) && sections.length > 0
+        ? sections
+        : [{ section_key: "main", label: "Review", sort_order: 0 }];
+      const sectionKeyToId: Record<string, string> = {};
+      for (let i = 0; i < sectionList.length; i++) {
+        const s = sectionList[i]!;
+        const { rows: vsRows } = await tx<{ id: string }>(
+          `INSERT INTO view_sections (view_config_id, section_key, label, sort_order)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id`,
+          [viewConfigId, s.section_key, s.label, s.sort_order ?? i]
         );
-        for (let i = 0; i < fcRows.length; i++) {
+        if (vsRows[0]?.id) sectionKeyToId[s.section_key] = vsRows[0].id;
+      }
+      const { rows: fcRows } = await tx<{ id: string; field_key: string }>(
+        "SELECT id, field_key FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+        [cycleId]
+      );
+      const fieldKeyToId = Object.fromEntries(fcRows.map((r) => [r.field_key, r.id]));
+      const defaultSectionKey = sectionList[0]?.section_key ?? "main";
+      for (let i = 0; i < fcRows.length; i++) {
+        const fc = fcRows[i]!;
+        const fcPayload = fieldConfigs[i];
+        const sectionKey = (fcPayload?.sectionKey && sectionKeyToId[fcPayload.sectionKey])
+          ? fcPayload.sectionKey
+          : defaultSectionKey;
+        const viewSectionId = sectionKeyToId[sectionKey];
+        if (viewSectionId && fc.id) {
           await tx(
             `INSERT INTO section_fields (view_section_id, field_config_id, sort_order)
              VALUES ($1, $2, $3)`,
-            [viewSectionId, fcRows[i]!.id, i]
+            [viewSectionId, fc.id, i]
           );
         }
       }

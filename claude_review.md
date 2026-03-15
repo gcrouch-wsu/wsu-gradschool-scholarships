@@ -1,166 +1,315 @@
-# Scholarship Review Platform — Build Assessment
+# Field Mapping Builder — UI Review & Improvement Proposals
 
-Reviewed: 2026-03-15
-Reviewer: Claude (claude-sonnet-4-6)
-Reference: handoff.MD
-
----
-
-## Executive Summary
-
-The platform is functionally complete and structurally sound against all handoff-specified features. Security boundaries between platform admins, scholarship admins, and reviewers are correctly enforced at the API layer with no privilege-escalation paths found. One genuine bug was identified that was not previously documented: the schema-drift check flags virtual attachment fields (column ID 0) as perpetually drifted, creating a false alarm on every cycle that uses attachment fields. All other gaps are pre-acknowledged in the handoff. The platform is one small fix away from clean internal-pilot readiness.
+**File reviewed:** `src/app/admin/scholarships/[id]/cycles/[cycleId]/builder/FieldMappingBuilder.tsx`
+**Related files:** `builder/page.tsx`, `api/admin/cycles/[id]/builder/route.ts`
 
 ---
 
-## Handoff Compliance — Per-Area Checklist
+## Current Issues
 
-### Connection Scoping
+### 1. Purpose Definitions (lines 513–521)
 
-| Check | Status | Notes |
-|---|---|---|
-| GET /api/admin/connections scopes by program for scholarship admins | Pass | `program_id IN (SELECT ... FROM program_admins WHERE user_id=$1)` |
-| Connection POST is platform-admin only | Pass | Hard gate, `is_platform_admin` only |
-| programId validated before insert | Pass | 400 on unknown program |
-| Cycles PATCH validates connection is assigned to cycle's program | Pass | `connections WHERE id=$1 AND program_id=$2`, 403 if not found |
-| Schema route requires cycleId for scholarship admins + validates connection-program binding | Pass | Three-step guard: canManageCycle, program lookup, connection-program check |
-| Connection PATCH (program-assign) verifies connection and program exist before update | Pass | 404 on unknown connection; 400 on unknown program |
-| Cycle detail page scopes UI connection picker | Pass | Server renders `WHERE program_id=$1` for scholarship admins |
+**Discovery problem.** The section uses `text-xs text-zinc-500` inside a `<details>` element that is collapsed by default. It is low-contrast, easy to miss, and most admins will never open it.
 
-### Attachment Access
+**Content problem.** The list describes what each purpose means, but does not show which Smartsheet column types are allowed for each one. This is the wrong direction for the admin's mental model. An admin thinks: "I have a PICKLIST column — what purposes can I assign?" not "I want to set Score — what columns can I use?"
 
-| Check | Status | Notes |
-|---|---|---|
-| Attachments API checks membership | Pass | `scholarship_memberships JOIN scholarship_cycles` |
-| Attachments API checks field_permissions (can_view on attachment field) | Pass | Returns 403 if no matching field_permissions row |
-| Attachment is virtual field (source_column_id = 0) | Pass | Builder stores 0; import-config defaults to 0 for attachment purpose |
-| Config route excludes attachment fields from validFields | Pass | Explicit filter: `purpose !== "attachment" && display_type !== "attachment_list"` |
-| Token stays server-side throughout | Pass | No credential returned to client anywhere |
-| `showAttachments` flag derived from role-permitted fields | Pass | Checked against `field_permissions.can_view = true` |
-
-### Config Lifecycle
-
-| Check | Status | Notes |
-|---|---|---|
-| Builder save wrapped in withTransaction | Pass | Full snapshot + config_version inside same transaction |
-| Clone-config wrapped in withTransaction | Pass | Delete-copy-snapshot-version all atomic; same-program check present |
-| Import-config wrapped in withTransaction | Pass | config_version created inside transaction |
-| Template apply creates config_version | Pass | AddCycleForm → import-config endpoint |
-| Publish: all prior versions demoted to superseded | Pass | `UPDATE config_versions SET status='superseded' WHERE id != $2` |
-| Publish: cycle.published_config_version_id updated | Pass | — |
-| Publish wrapped in withTransaction | Fail | Three sequential UPDATE queries; no rollback on partial failure |
-
-### Admin Boundaries
-
-| Check | Status | Notes |
-|---|---|---|
-| Template GET (list + by ID) requires canAccessAdmin | Pass | Both routes enforce this |
-| Template POST requires is_platform_admin | Pass | Hard gate |
-| "Save as template" UI gated by isPlatformAdmin prop | Pass | ExportImportConfig receives `isPlatformAdmin` and conditionally renders button |
-| Audit log (GET) is platform admin only | Pass | Hard gate |
-| App config GET/PATCH platform admin only | Pass | Hard gate; PATCH validates numeric ranges |
-| Connection rotate/test platform admin only | Pass | Hard gate |
-| Program admin add/remove platform admin only + audited | Pass | All three verbs gated |
-| Cycle creation platform admin only + audited | Pass | `is_platform_admin` only |
-| Audit filter includes app_config.updated, cycle.config_imported, template.created | Pass | All emitted by their respective routes |
-
-### WSU-Only Reviewer Policy
-
-| Check | Status | Notes |
-|---|---|---|
-| Assignments POST enforces email domain when allow_external_reviewers=false | Pass | Domain extracted from email; 400 with descriptive message |
-| ALLOWED_REVIEWER_EMAIL_DOMAIN env var respected (default wsu.edu) | Pass | Both UI and API use the env var |
-| Cycle page user picker scoped to allowed domain | Pass | Server-side filter: `email.split('@')[1] === allowedDomain` |
-
-### Audit Coverage
-
-| Check | Status | Notes |
-|---|---|---|
-| connection.created / rotated / program_assigned | Pass | — |
-| cycle.created / updated / config_cloned / config_imported / config_updated / config_published | Pass | — |
-| assignment.created / removed | Pass | — |
-| program_admin.added / removed | Pass | — |
-| template.created | Pass | Added in 2026-03-15 fixes |
-| app_config.updated | Pass | — |
-| reviewer.score_saved with before/after cell values | Pass | — |
-| Audit failures swallowed silently (try/catch → console.error) | Note | Acceptable but invisible if logs aren't monitored |
-
-### Security Model
-
-| Check | Status | Notes |
-|---|---|---|
-| Tokens encrypted AES-256-GCM with scrypt KDF | Pass | `encryption.ts` — correct IV/tag/key derivation |
-| Tokens never returned to client | Pass | No route exposes encrypted_credentials or plaintext |
-| Session cookies: httpOnly, secure in production, sameSite lax | Pass | — |
-| DB-backed sessions with revocation | Pass | revoked_at and status = 'active' check |
-| Sliding window session extension | Pass | expires_at updated on every request |
-| All DB queries parameterized | Pass | No string interpolation in SQL values |
-| Live schema validation before reviewer exposure | Pass | getLiveColumnIds() gating in row GET and POST |
-| Field edit permissions enforced server-side in reviewer POST | Pass | editableIds derived from field_permissions; filtered against liveColumnIds |
-| Middleware provides page-level redirect for unauthenticated requests | Pass | — |
-| Middleware does NOT enforce auth on API routes | Note | By design; documented as pending proxy migration |
+**Context gap.** The note explaining that purpose options are filtered by column type appears only inside the collapsed footer. Admins who do not read it will not understand why a purpose is missing from a dropdown.
 
 ---
 
-## Critical Issues — Must Fix Before Pilot
+### 2. Column Picker (lines 497–511)
 
-None that block the core reviewer workflow. See Recommendations for the schema-drift bug that should be fixed before any pilot cycles use attachment fields.
+Plain flat buttons with no type context. An admin looking at `+ Program GPA` has no way to know whether it is a PICKLIST, TEXT_NUMBER, or something else before clicking, and therefore no way to anticipate which purposes will be available. Locked columns are not visually flagged until after they are added.
 
 ---
 
-## Recommendations — Should Fix
+### 3. Field Rows (lines 573–677)
 
-### 1. Schema drift false positive for virtual attachment fields
+- The "Type" badge shows raw Smartsheet API strings (`TEXT_NUMBER`, `ABSTRACT_DATETIME`). These are accurate but not admin-friendly as the primary label.
+- The purpose `<select>` uses a `title` attribute for the description tooltip. Tooltips are slow on desktop and invisible on touch — not a reliable mechanism for communicating purpose descriptions.
+- No visual distinction between read-only purposes (identity, subtitle, narrative, metadata) and editable ones (score, comments). Both look identical in the row.
+- The locked column conflict warning is rendered at the bottom of the row via `col-span-full`. It is easy to miss on first scan because it appears after all the controls.
+- The drag affordance is the entire row, but there is no visible handle. The cursor changes on hover, but that is invisible until the user mouses over the row.
 
-**File:** `src/app/api/admin/cycles/[id]/schema-drift/route.ts:34`
+---
 
-The drift check fetches all `field_configs` and tests each against `liveColumnIds`. Attachment fields have `source_column_id = 0`. Smartsheet column IDs are large integers; `0` will never appear in the live schema, so `liveColumnIds.has(0)` is always `false`. Any cycle with an attachment field will show a persistent "drifted column" warning, even though the field is working correctly.
+### 4. Tab Management (lines 525–561)
 
-The query needs a filter:
+Tab management lives inside section 1, between the column picker and the field table. This makes section 1 responsible for three separate tasks: adding columns, naming tabs, and configuring each field. The cognitive load is high and the visual hierarchy is unclear.
 
-```sql
--- Add to the WHERE clause:
-AND fc.source_column_id != 0
+---
+
+### 5. Extensibility Gaps
+
+- `SMARTSHEET_TYPE_TO_PURPOSES` is the correct single source of truth for type-to-purpose filtering, but has no inline documentation explaining *why* a type maps to certain purposes. Future maintainers must infer the reasoning.
+- `DISPLAY_TYPES` (the implicit purpose → displayType map) is used in both the component and the POST handler, but there is no comment connecting them. Adding a new purpose requires updating both places and the `validDisplayTypes` array in the route — this is not obvious.
+- `getPurposesForColumnType` falls back to all purposes for unknown column types (line 41). This could surface confusing options for unusual API types. A narrower fallback (e.g. `["metadata"]`) would be safer.
+
+---
+
+## Proposed Improvements
+
+### Proposal 1 — Replace the Purpose Definitions collapsible with an inline reference panel
+
+Remove the `<details>` element. Replace it with a compact always-visible legend directly above the field table. Use color-coded badges that match the purpose badges in each field row, so the legend and the table are visually consistent.
+
+Add a `PURPOSE_STYLES` constant near `PURPOSES`:
+
+```ts
+const PURPOSE_STYLES: Record<string, string> = {
+  identity:   "bg-blue-100 text-blue-700",
+  subtitle:   "bg-blue-50 text-blue-600",
+  narrative:  "bg-violet-100 text-violet-700",
+  score:      "bg-amber-100 text-amber-700",
+  comments:   "bg-amber-50 text-amber-700",
+  metadata:   "bg-zinc-200 text-zinc-600",
+  attachment: "bg-teal-100 text-teal-700",
+};
 ```
 
-Or equivalently filter in TypeScript after the query on `f.source_column_id !== 0`. This is a one-line fix.
+Replace lines 513–524 with:
 
-### 2. Publish-config should run in a transaction
+```tsx
+<div className="mb-4 rounded-lg border border-zinc-100 bg-zinc-50 p-3">
+  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+    Purpose reference
+  </div>
+  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
+    {PURPOSES.map((p) => (
+      <div key={p.value} className="flex items-start gap-1.5">
+        <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${PURPOSE_STYLES[p.value]}`}>
+          {p.label}
+        </span>
+        <span className="text-xs text-zinc-500">{p.desc}</span>
+      </div>
+    ))}
+  </div>
+  <p className="mt-2 text-[11px] text-zinc-400">
+    Available purposes are filtered by each column&apos;s Smartsheet type.
+    Hover any purpose dropdown to see why options may be limited.
+  </p>
+</div>
+```
 
-**File:** `src/app/api/admin/cycles/[id]/publish-config/route.ts`
-
-Three sequential UPDATE queries (supersede old versions → update cycle pointer → mark latest published) are not wrapped in `withTransaction`. If steps 2 or 3 fail after step 1 succeeds, old versions are marked superseded but the cycle pointer is stale or the latest version is still `draft`. Very unlikely in practice but easy to fix by wrapping all three in `withTransaction`.
-
----
-
-## Minor Notes — Non-Blocking
-
-1. **`getAdminProgramIds` type mismatch** (`src/lib/admin.ts:8`): The return type declares `Promise<"all" | string[]>` but the function only ever returns `string[]`. The `"all"` branch was presumably planned but not implemented. No callers rely on it. Misleading type documentation only.
-
-2. **Duplicate `cycleId` null-check in assignments route** (`src/app/api/admin/assignments/route.ts:15-34`): `cycleId` is checked for truthiness at line 15-17 then again at line 22-34. The second `!cycleId` branch is dead code after the first check. No impact.
-
-3. **`displayName` logic is duplicated and divergent**: The reviewer rows list route (`rows/route.ts:90-95`) has hardcoded fallback keys `"name"`, `"title"`, `"Applicant Name"`. The `getReviewerNominees` function in `reviewer.ts:88-91` uses the first non-empty identity field value instead. The rows route doesn't call `getReviewerNominees`; it has its own parallel implementation. Could cause inconsistent display names if refactored.
-
-4. **`must_change_password` enforcement**: The field is correctly stored and returned by `getSessionUser`. The middleware does not redirect to `/change-password`, which per the handoff is by design (layout-level enforcement). Confirm that the admin and reviewer layouts enforce the redirect for `must_change_password = true` users — this was not verified in this assessment.
-
-5. **Attachment URLs in response are pre-signed Smartsheet URLs**: They expire per `urlExpiresInMillis` and are served to authorized reviewers only. This is the correct Smartsheet attachment model.
-
----
-
-## Readiness Verdict
-
-**Needs one fix, then ready for internal pilot.**
-
-The platform's security architecture is sound with no access-control bypasses or token exposure paths. All handoff-specified features are implemented. The only new finding beyond what the handoff already documents is the schema-drift false positive for attachment fields — a one-line fix. If pilot cycles will not use attachment fields, the platform can be considered ready now. If attachment fields will be used, fix the drift route first.
+Use `PURPOSE_STYLES` on the purpose badge in each field row (see Proposal 3) to create a consistent visual link between the legend and the table.
 
 ---
 
-## What Looks Solid
+### Proposal 2 — Column picker: add type and locked badges to each button
 
-- **Permission model end-to-end**: Every API route enforces auth via `getSessionUser()` → `canManageCycle()` / `canManageProgram()` / `canAccessAdmin()`. No shortcut paths observed.
-- **Transaction discipline**: Builder save, clone-config, and import-config are all correctly wrapped in `withTransaction`. The snapshot reads that feed into `config_versions` are inside the same transaction, preventing stale snapshots.
-- **Token isolation**: Smartsheet tokens are encrypted at rest (AES-256-GCM + scrypt), decrypted only in server-side route handlers, and never serialized into any API response. The connections list endpoint returns only `{id, name, provider, status, last_verified_at}`.
-- **Attachment permission depth**: Attachment access control is enforced at two independent layers — the config route computes `showAttachments = false` if the role has no view permission on attachment fields, and the attachments API endpoint independently re-verifies the same permission gate. Defense in depth.
-- **WSU-only policy**: The email domain check is enforced server-side in the assignments route. UI filtering is applied on top of, not instead of, the API enforcement.
-- **Config versioning**: All four paths that produce a new config (builder save, clone, import, template-apply) correctly create a `config_versions` row inside their transaction. Publish correctly supersedes all prior versions.
-- **Audit completeness**: All significant admin actions and reviewer score saves produce audit log entries with before/after context where applicable.
-- **Cycle isolation**: `canManageCycle` chains through `scholarship_cycles.program_id → program_admins` so scholarship admins can only reach cycles in their programs. Cross-program operations (clone-config) enforce `sourceCycle.program_id === targetCycle.program_id`.
+Replace the flat button list (lines 497–511) with buttons that show the column type and locked state before the admin clicks:
+
+```tsx
+<div className="mb-4">
+  <div className="mb-1 text-xs text-zinc-500">
+    Click a column to add it. Unmapped columns are shown below.
+  </div>
+  <div className="flex flex-wrap gap-2">
+    {unmappedColumns.map((col) => (
+      <button
+        key={col.id}
+        type="button"
+        onClick={() => addColumn(col)}
+        className="flex items-center gap-1.5 rounded border border-zinc-300 px-2.5 py-1.5 text-sm hover:bg-zinc-50 hover:border-zinc-400"
+      >
+        <span>+ {col.title}</span>
+        <span className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] font-mono text-zinc-500">
+          {col.type}
+        </span>
+        {col.locked && (
+          <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
+            locked
+          </span>
+        )}
+      </button>
+    ))}
+    {unmappedColumns.length === 0 && columns.length > 0 && (
+      <span className="text-sm text-zinc-500">All columns mapped</span>
+    )}
+  </div>
+</div>
+```
+
+This gives the admin two pieces of information before clicking: the column type (so they can anticipate which purposes will be available) and whether the column is locked (so they know to avoid Score/Comments before adding it).
+
+---
+
+### Proposal 3 — Field rows: drag handle icon, purpose badge, and top-of-row locked warning
+
+**a) Drag handle.** Add a dedicated handle column as the first cell in each row. Move `draggable`/`onDragStart`/`onDrop` to the handle element rather than the full row div. This prevents dropdown interactions from accidentally initiating a drag.
+
+Add to the grid header as the first `<span>`:
+```tsx
+<span className="w-5" /> {/* drag handle */}
+```
+
+Add as the first cell in each row:
+```tsx
+<div
+  draggable
+  onDragStart={...}
+  onDragOver={...}
+  onDrop={...}
+  className="flex w-5 shrink-0 cursor-grab items-center justify-center text-zinc-300 hover:text-zinc-500 active:cursor-grabbing"
+  title="Drag to reorder"
+>
+  ⠿
+</div>
+```
+
+**b) Purpose badge above the select.** Wrap the existing `<select>` in a small container that shows the current purpose as a colored badge:
+
+```tsx
+<div className="flex flex-col gap-1">
+  <span className={`self-start rounded px-1.5 py-0.5 text-[10px] font-medium ${PURPOSE_STYLES[m.purpose] ?? "bg-zinc-100 text-zinc-500"}`}>
+    {PURPOSES.find((p) => p.value === m.purpose)?.label ?? m.purpose}
+  </span>
+  <select
+    value={m.purpose}
+    onChange={(e) =>
+      updateMapping(idx, {
+        purpose: e.target.value,
+        displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
+      })
+    }
+    className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+    title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
+  >
+    {/* options unchanged */}
+  </select>
+</div>
+```
+
+**c) Locked warning as a top-of-row banner.** Move the `lockedConflict` block from the bottom of the row to the top, so it appears as a banner before the field controls:
+
+```tsx
+{lockedConflict && (
+  <div className="col-span-full mb-1 flex items-center gap-1.5 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">
+    <span>⚠</span>
+    <span>
+      Locked column — write conflicts will occur if used as Score or Comments.
+      Change purpose or unlock in Smartsheet.
+    </span>
+  </div>
+)}
+```
+
+Place this before the column/type/purpose/label cells in the grid, not after.
+
+---
+
+### Proposal 4 — Move tab management to its own numbered subsection
+
+Remove the tab management UI from inside section 1 (lines 525–561). Place it as a separate section after the field table, only rendered when `viewType === "tabbed"`. This reduces section 1 to a single responsibility: adding and configuring fields.
+
+```tsx
+{viewType === "tabbed" && (
+  <section className="rounded-lg border border-zinc-200 bg-white p-4">
+    <h2 className="mb-1 font-medium text-zinc-900">1b. Tabs</h2>
+    <p className="mb-3 text-sm text-zinc-600">
+      Create tabs and assign fields using the Tab column in the field table above.
+    </p>
+    <div className="mb-2 flex items-center justify-between">
+      <span className="text-sm font-medium text-zinc-700">Tabs</span>
+      <button
+        type="button"
+        onClick={addSection}
+        className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+      >
+        + Add tab
+      </button>
+    </div>
+    <div className="flex flex-wrap gap-2">
+      {sections.map((s, i) => (
+        <div key={s.section_key} className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-1">
+          <input
+            type="text"
+            value={s.label}
+            onChange={(e) => updateSection(i, { label: e.target.value })}
+            className="w-32 rounded border-0 bg-transparent px-1 py-0.5 text-sm focus:ring-1 focus:ring-zinc-400"
+            placeholder="Tab label"
+          />
+          {sections.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeSection(i)}
+              className="text-xs text-red-600 hover:text-red-700"
+              title="Remove tab"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  </section>
+)}
+```
+
+The Tab column in the field table still appears when `viewType === "tabbed"`, so the assignment workflow is unchanged — just the creation/naming UI moves to its own section.
+
+---
+
+### Proposal 5 — Extensibility: document the implicit contracts
+
+**`SMARTSHEET_TYPE_TO_PURPOSES`** — add an optional `note` per entry to document the reasoning:
+
+```ts
+const SMARTSHEET_TYPE_TO_PURPOSES: Record<string, { purposes: string[]; note?: string }> = {
+  PICKLIST: {
+    purposes: ["identity", "subtitle", "score", "metadata"],
+    note: "Fixed-option columns map well to score fields",
+  },
+  TEXT_NUMBER: {
+    purposes: ["identity", "subtitle", "narrative", "score", "comments", "metadata"],
+  },
+  // ...
+};
+```
+
+Update `getPurposesForColumnType` to read `entry.purposes` instead of the array directly.
+
+**`DISPLAY_TYPES`** — add a comment making the contract explicit:
+
+```ts
+/**
+ * Maps purpose → display_type used in the reviewer UI.
+ * When adding a new purpose:
+ *   1. Add an entry here.
+ *   2. Add the display_type value to validDisplayTypes in route.ts.
+ *   3. Add a renderer for the display_type in the reviewer view component.
+ */
+const DISPLAY_TYPES: Record<string, string> = { ... };
+```
+
+**`getPurposesForColumnType` fallback** — narrow from "all purposes" to `["metadata"]` for unknown types:
+
+```ts
+function getPurposesForColumnType(colType: string): Array<(typeof PURPOSES)[number]> {
+  const allowed = SMARTSHEET_TYPE_TO_PURPOSES[colType]?.purposes;
+  if (!allowed?.length) {
+    // Unknown type: restrict to metadata only rather than showing all options.
+    return PURPOSES.filter((p) => p.value === "metadata");
+  }
+  return PURPOSES.filter((p) => allowed.includes(p.value));
+}
+```
+
+---
+
+## Change Summary
+
+| Location | Change | Reason |
+|---|---|---|
+| Lines 513–524 | Replace `<details>` with always-visible legend using `PURPOSE_STYLES` | Discovery + visual consistency |
+| Near `PURPOSES` | Add `PURPOSE_STYLES` record | Consistent color coding throughout |
+| Lines 497–511 | Column picker buttons show type badge + locked badge | Context before clicking |
+| Field row header | Add drag handle column | Clear affordance |
+| Field row cells | Move drag handlers to handle cell; add purpose badge above select | Prevents accidental drag; visual identity |
+| `lockedConflict` block | Move to top of row as banner | Visibility |
+| Lines 525–561 | Move tab management to separate numbered subsection | Reduce cognitive load in section 1 |
+| `SMARTSHEET_TYPE_TO_PURPOSES` | Add optional `note` per entry | Self-documenting for future extensions |
+| `DISPLAY_TYPES` | Add comment documenting the three-step contract | Prevent missed updates when adding purposes |
+| `getPurposesForColumnType` | Narrow unknown-type fallback to `["metadata"]` | Avoid confusing options for unusual API types |
+
+All changes are confined to `FieldMappingBuilder.tsx`. No API, database, or data model changes are required.

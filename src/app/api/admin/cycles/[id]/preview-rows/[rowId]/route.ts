@@ -81,6 +81,7 @@ export async function GET(
   }
 
   const { rows: fieldConfigs } = await query<{
+    id: string;
     field_key: string;
     source_column_id: number;
     purpose: string;
@@ -88,12 +89,37 @@ export async function GET(
     display_type: string;
     can_edit: boolean;
   }>(
-    `SELECT fc.field_key, fc.source_column_id, fc.purpose, fc.display_label, fc.display_type, fp.can_edit
+    `SELECT fc.id, fc.field_key, fc.source_column_id, fc.purpose, fc.display_label, fc.display_type, fp.can_edit
      FROM field_configs fc
      JOIN field_permissions fp ON fp.field_config_id = fc.id
      WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
      ORDER BY fc.sort_order`,
     [cycleId, data.roleId]
+  );
+
+  const { rows: sectionFields } = await query<{
+    view_section_id: string;
+    field_config_id: string;
+  }>(
+    `SELECT sf.view_section_id, sf.field_config_id
+     FROM section_fields sf
+     JOIN view_sections vs ON vs.id = sf.view_section_id
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1`,
+    [cycleId]
+  );
+  const { rows: viewSections } = await query<{ id: string; section_key: string }>(
+    `SELECT vs.id, vs.section_key
+     FROM view_sections vs
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1`,
+    [cycleId]
+  );
+  const fieldIdToSectionKey = Object.fromEntries(
+    sectionFields.map((sf) => {
+      const vs = viewSections.find((s) => s.id === sf.view_section_id);
+      return [sf.field_config_id, vs?.section_key ?? "main"];
+    })
   );
 
   const validConfigs = fieldConfigs.filter((f) =>
@@ -106,6 +132,7 @@ export async function GET(
     displayLabel: f.display_label,
     displayType: f.display_type,
     canEdit: f.can_edit,
+    sectionKey: fieldIdToSectionKey[f.id] ?? "main",
     value: data.row.cells[f.source_column_id],
   }));
 
