@@ -90,10 +90,14 @@ export async function GET(
     for (const f of identityFields) {
       identity[f.field_key] = row.cells[f.source_column_id] ?? "";
     }
+    const firstIdentityValue = Object.values(identity).find(
+      (v) => v != null && String(v).trim() !== ""
+    );
     const displayName =
       (identity.name as string) ||
       (identity.title as string) ||
       (identity["Applicant Name"] as string) ||
+      (firstIdentityValue != null ? String(firstIdentityValue) : null) ||
       `Row ${row.id}`;
     return {
       id: row.id,

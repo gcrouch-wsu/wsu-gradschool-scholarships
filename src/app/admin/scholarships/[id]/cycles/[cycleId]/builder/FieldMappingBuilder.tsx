@@ -94,7 +94,10 @@ function AccordionCard({
       open={defaultOpen}
       className="group rounded-lg border border-zinc-200 bg-white overflow-hidden"
     >
-      <summary className="cursor-pointer list-none px-4 py-3 font-bold text-zinc-900 hover:bg-zinc-50">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-bold text-zinc-900 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
+        <span className="text-zinc-400 transition-transform group-open:rotate-90" aria-hidden>
+          ▶
+        </span>
         {title}
       </summary>
       <div className="border-t border-zinc-200 px-4 pb-4 pt-3">{children}</div>

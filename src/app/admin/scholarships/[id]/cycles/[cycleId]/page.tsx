@@ -11,6 +11,8 @@ import { ExternalReviewersToggle } from "./ExternalReviewersToggle";
 import { PublishConfigButton } from "./PublishConfigButton";
 import { RemoveAssignmentButton } from "./RemoveAssignmentButton";
 import { SchemaDriftWarning } from "./SchemaDriftWarning";
+import { RenameCycleForm } from "./RenameCycleForm";
+import { DeleteCycleButton } from "./DeleteCycleButton";
 
 export default async function CycleDetailPage({
   params,
@@ -151,10 +153,28 @@ export default async function CycleDetailPage({
             </span>
           )}
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-4">
           <ExternalReviewersToggle
             cycleId={cycleId}
             allowExternalReviewers={cycle.allow_external_reviewers}
+          />
+          <details className="rounded border border-zinc-200 bg-white">
+            <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
+              Rename cycle
+            </summary>
+            <div className="border-t border-zinc-200 p-3">
+              <RenameCycleForm
+                cycleId={cycleId}
+                programId={programId}
+                currentKey={cycle.cycle_key}
+                currentLabel={cycle.cycle_label}
+              />
+            </div>
+          </details>
+          <DeleteCycleButton
+            cycleId={cycleId}
+            programId={programId}
+            cycleLabel={cycle.cycle_label}
           />
         </div>
       </div>
@@ -166,6 +186,24 @@ export default async function CycleDetailPage({
       )}
 
       <div className="space-y-6">
+        <section>
+          <h2 className="mb-3 text-lg font-medium text-zinc-900">
+            Smartsheet connection
+          </h2>
+          <CycleSheetConfig
+            cycleId={cycleId}
+            connectionId={cycle.connection_id}
+            sheetId={cycle.sheet_id}
+            sheetName={cycle.sheet_name}
+            schemaSyncedAt={cycle.schema_synced_at}
+            connections={connections}
+          />
+          <CloneConfigForm cycleId={cycleId} sourceCycles={programCycles} />
+          <ApplyTemplateForm cycleId={cycleId} />
+          <ExportImportConfig cycleId={cycleId} isPlatformAdmin={user.is_platform_admin} />
+          <SchemaDriftWarning cycleId={cycleId} />
+        </section>
+
         <section className="rounded-lg border border-zinc-200 bg-white p-5">
           <h2 className="text-lg font-medium text-zinc-900">
             Fields & layout (what reviewers see)
@@ -195,23 +233,6 @@ export default async function CycleDetailPage({
           </div>
         </section>
 
-        <section>
-          <h2 className="mb-3 text-lg font-medium text-zinc-900">
-            Smartsheet connection
-          </h2>
-          <CycleSheetConfig
-            cycleId={cycleId}
-            connectionId={cycle.connection_id}
-            sheetId={cycle.sheet_id}
-            sheetName={cycle.sheet_name}
-            schemaSyncedAt={cycle.schema_synced_at}
-            connections={connections}
-          />
-          <CloneConfigForm cycleId={cycleId} sourceCycles={programCycles} />
-          <ApplyTemplateForm cycleId={cycleId} />
-          <ExportImportConfig cycleId={cycleId} isPlatformAdmin={user.is_platform_admin} />
-          <SchemaDriftWarning cycleId={cycleId} />
-        </section>
         <section>
           <h2 className="mb-3 text-lg font-medium text-zinc-900">
             Assigned reviewers

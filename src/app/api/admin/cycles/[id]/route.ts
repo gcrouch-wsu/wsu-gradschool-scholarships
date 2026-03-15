@@ -85,6 +85,22 @@ export async function PATCH(
     updates.push(`published_config_version_id = $${i++}`);
     values.push(body.publishedConfigVersionId || null);
   }
+  if (body.cycleKey !== undefined) {
+    const key = String(body.cycleKey).trim();
+    if (!key) {
+      return NextResponse.json({ error: "cycleKey cannot be empty" }, { status: 400 });
+    }
+    updates.push(`cycle_key = $${i++}`);
+    values.push(key);
+  }
+  if (body.cycleLabel !== undefined) {
+    const label = String(body.cycleLabel).trim();
+    if (!label) {
+      return NextResponse.json({ error: "cycleLabel cannot be empty" }, { status: 400 });
+    }
+    updates.push(`cycle_label = $${i++}`);
+    values.push(label);
+  }
 
   if (updates.length === 0) {
     return NextResponse.json({ error: "No updates provided" }, { status: 400 });
@@ -93,10 +109,21 @@ export async function PATCH(
   updates.push(`updated_at = now()`);
   values.push(id);
 
-  await query(
-    `UPDATE scholarship_cycles SET ${updates.join(", ")} WHERE id = $${i}`,
-    values
-  );
+  try {
+    await query(
+      `UPDATE scholarship_cycles SET ${updates.join(", ")} WHERE id = $${i}`,
+      values
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return NextResponse.json(
+        { error: "A cycle with this key already exists for this program" },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
   await logAudit({
     actorUserId: user.id,
     cycleId: id,
@@ -105,9 +132,46 @@ export async function PATCH(
     targetId: id,
     metadata: Object.fromEntries(
       Object.entries(body).filter(([k]) =>
-        ["connectionId", "sheetId", "status", "allowExternalReviewers", "schemaSyncedAt", "publishedConfigVersionId"].includes(k)
+        ["connectionId", "sheetId", "status", "allowExternalReviewers", "schemaSyncedAt", "publishedConfigVersionId", "cycleKey", "cycleLabel"].includes(k)
       )
     ),
   });
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id: cycleId } = await params;
+  const canManage = await canManageCycle(user.id, user.is_platform_admin, cycleId);
+  if (!canManage) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { rows: cycle } = await query<{ program_id: string }>(
+    "SELECT program_id FROM scholarship_cycles WHERE id = $1",
+    [cycleId]
+  );
+  if (cycle.length === 0) {
+    return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  }
+
+  await query("DELETE FROM scholarship_cycles WHERE id = $1", [cycleId]);
+
+  await logAudit({
+    actorUserId: user.id,
+    cycleId,
+    actionType: "cycle.deleted",
+    targetType: "cycle",
+    targetId: cycleId,
+    metadata: { programId: cycle[0]?.program_id },
+  });
+
   return NextResponse.json({ success: true });
 }

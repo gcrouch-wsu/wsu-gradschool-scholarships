@@ -55,6 +55,7 @@ export function PreviewScoreForm({
   const [activeTab, setActiveTab] = useState<string>("main");
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
+  const [columnOptions, setColumnOptions] = useState<Record<number, string[]>>({});
 
   const loadRow = useCallback(async () => {
     const base = `/api/admin/cycles/${cycleId}`;
@@ -95,6 +96,7 @@ export function PreviewScoreForm({
       if (vSections.length > 0) setActiveTab(vSections[0].section_key);
       setColors({ ...DEFAULT_COLORS, ...(configData.colors ?? {}) });
       setPinnedFieldKeys(configData.pinnedFieldKeys ?? []);
+      setColumnOptions(configData.columnOptions ?? {});
       const initial: Record<number, unknown> = {};
       for (const f of fieldsData) {
         initial[f.sourceColumnId] = f.value;
@@ -154,9 +156,20 @@ export function PreviewScoreForm({
       <div key={f.fieldKey}>
         <label className="block text-sm font-medium text-zinc-700">{f.displayLabel}</label>
         {f.displayType === "score_select" ? (
-          <div className="mt-1 text-zinc-600">
-            {String(edits[f.sourceColumnId] ?? f.value ?? "—")}
-          </div>
+          <select
+            value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
+            onChange={(e) =>
+              setEdits((prev) => ({ ...prev, [f.sourceColumnId]: e.target.value || null }))
+            }
+            className="mt-1 block w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="">— Select —</option>
+            {(columnOptions[f.sourceColumnId] ?? []).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
         ) : (
           <div className="mt-1 whitespace-pre-wrap text-zinc-600">
             {String(edits[f.sourceColumnId] ?? f.value ?? "") || "—"}
