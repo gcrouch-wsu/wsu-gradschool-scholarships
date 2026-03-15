@@ -41,10 +41,10 @@ export function PublishConfigButton({
   }
 
   return (
-    <div className="mt-2 flex items-center gap-2">
+    <div className="flex items-center gap-2" title="Each save creates a new version. Publish makes this version live for reviewers.">
       {isPublished ? (
         <span className="text-sm text-green-600">
-          Config v{latestVersion.version_number} published
+          Published (v{latestVersion.version_number})
         </span>
       ) : (
         <>
@@ -53,8 +53,9 @@ export function PublishConfigButton({
             onClick={handlePublish}
             disabled={loading}
             className="rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-50 disabled:opacity-50"
+            title="Each save creates a new version. Publish makes this version live for reviewers."
           >
-            {loading ? "Publishing…" : `Publish config v${latestVersion.version_number}`}
+            {loading ? "Publishing…" : `Publish latest (v${latestVersion.version_number})`}
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </>

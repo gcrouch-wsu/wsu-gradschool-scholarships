@@ -36,12 +36,12 @@ export async function GET(
   }
 
   const schema = cycle.sheet_schema_snapshot_json as {
-    columns?: Array<{ id: number; index: number; title: string; type: string; options?: string[] }>;
+    columns?: Array<{ id: number; index: number; title: string; type: string; options?: string[]; locked?: boolean }>;
   };
   const sheetColumns = schema.columns ?? [];
   const columns = [
-    { id: 0, index: -1, title: "Attachments (row-level)", type: "attachment_list" },
-    ...sheetColumns,
+    { id: 0, index: -1, title: "Attachments (row-level)", type: "attachment_list", locked: false },
+    ...sheetColumns.map((c) => ({ ...c, locked: c.locked ?? false })),
   ];
 
   const { rows: fieldConfigs } = await query<{

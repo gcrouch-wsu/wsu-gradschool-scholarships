@@ -4,15 +4,43 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+/**
+ * Purpose = how this field is used in the reviewer UI (app-layer concept).
+ * Smartsheet column type (TEXT_NUMBER, PICKLIST, etc.) is the source of truth from the API.
+ * This mapping defines which purposes are valid for each Smartsheet column type.
+ * Extensible: add new purposes or type mappings as we build out more use cases.
+ */
 const PURPOSES = [
-  { value: "identity", label: "Identity", desc: "Primary identifier (e.g. name)" },
+  { value: "identity", label: "Identity", desc: "Primary identifier (e.g. applicant name)" },
   { value: "subtitle", label: "Subtitle", desc: "Secondary identifier" },
-  { value: "narrative", label: "Narrative", desc: "Read-only narrative text" },
-  { value: "score", label: "Score", desc: "Reviewer selects from options" },
-  { value: "comments", label: "Comments", desc: "Reviewer writes comments" },
-  { value: "metadata", label: "Metadata", desc: "Other read-only fields" },
-  { value: "attachment", label: "Attachment", desc: "Read-only attachment list" },
+  { value: "narrative", label: "Narrative", desc: "Essay or long text — read-only" },
+  { value: "score", label: "Score", desc: "Reviewer picks from options — editable" },
+  { value: "comments", label: "Comments", desc: "Reviewer writes free text — editable" },
+  { value: "metadata", label: "Metadata", desc: "Other read-only info (dates, IDs, etc.)" },
+  { value: "attachment", label: "Attachment", desc: "Row-level attachments" },
 ] as const;
+
+/** Map Smartsheet column type → purposes that make sense for that type. Uses actual API types; no arbitrary types. */
+const SMARTSHEET_TYPE_TO_PURPOSES: Record<string, string[]> = {
+  TEXT_NUMBER: ["identity", "subtitle", "narrative", "score", "comments", "metadata"],
+  PICKLIST: ["identity", "subtitle", "score", "metadata"],
+  MULTI_PICKLIST: ["score", "metadata"],
+  CHECKBOX: ["score", "metadata"],
+  CONTACT_LIST: ["identity", "subtitle", "metadata"],
+  MULTI_CONTACT_LIST: ["metadata"],
+  DATE: ["identity", "subtitle", "metadata"],
+  DATETIME: ["metadata"],
+  ABSTRACT_DATETIME: ["metadata"],
+  DURATION: ["metadata"],
+  PREDECESSOR: ["metadata"],
+  attachment_list: ["attachment"],
+};
+
+function getPurposesForColumnType(colType: string): Array<(typeof PURPOSES)[number]> {
+  const allowed = SMARTSHEET_TYPE_TO_PURPOSES[colType];
+  if (!allowed?.length) return [...PURPOSES];
+  return PURPOSES.filter((p) => allowed.includes(p.value));
+}
 
 const DISPLAY_TYPES: Record<string, string> = {
   identity: "header",
@@ -36,6 +64,8 @@ interface Column {
   index: number;
   title: string;
   type: string;
+  options?: string[];
+  locked?: boolean;
 }
 
 interface FieldConfig {
@@ -131,6 +161,9 @@ export function FieldMappingBuilder({
     const key = `col_${col.id}`;
     if (mapped.some((m) => m.sourceColumnId === col.id)) return;
     const isAttachment = col.id === 0;
+    const colType = isAttachment ? "attachment_list" : col.type;
+    const purposes = getPurposesForColumnType(colType);
+    const defaultPurpose = isAttachment ? "attachment" : (purposes[0]?.value ?? "metadata");
     const defaultPerms = (data?.roles ?? []).map((r) => ({
       roleId: r.id,
       canView: true,
@@ -141,9 +174,9 @@ export function FieldMappingBuilder({
       {
         sourceColumnId: col.id,
         sourceColumnTitle: col.title,
-        purpose: isAttachment ? "attachment" : "metadata",
+        purpose: defaultPurpose,
         displayLabel: col.title,
-        displayType: isAttachment ? "attachment_list" : "short_text",
+        displayType: isAttachment ? "attachment_list" : DISPLAY_TYPES[defaultPurpose] ?? "short_text",
         sortOrder: prev.length,
         fieldKey: key,
         permissions: defaultPerms,
@@ -226,7 +259,7 @@ export function FieldMappingBuilder({
       <section className="rounded-lg border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 font-medium text-zinc-900">1. Map columns to purpose</h2>
         <p className="mb-4 text-sm text-zinc-600">
-          Add columns from your sheet and assign each a purpose. Identity, narrative, score, and comments are used by the reviewer runtime.
+          Add columns and assign each a purpose. Column type (e.g. TEXT_NUMBER, PICKLIST) comes from Smartsheet — we use the actual API types. Purpose is how we use it in the reviewer UI; the dropdown shows only purposes valid for that column type. Locked columns cannot be edited — avoid Score or Comments.
         </p>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -245,68 +278,114 @@ export function FieldMappingBuilder({
           )}
         </div>
 
+        <details className="mb-3 text-xs text-zinc-500">
+          <summary className="cursor-pointer hover:text-zinc-700">Purpose definitions (mapped from Smartsheet column type)</summary>
+          <ul className="mt-2 space-y-1 pl-4">
+            {PURPOSES.map((p) => (
+              <li key={p.value}><strong>{p.label}</strong>: {p.desc}</li>
+            ))}
+          </ul>
+          <p className="mt-2 pl-4 italic">Purpose options are filtered by the column&apos;s Smartsheet type (TEXT_NUMBER, PICKLIST, etc.).</p>
+        </details>
         <p className="mb-2 text-xs text-zinc-500">
           Drag to reorder. Order determines display in reviewer layout.
         </p>
         <div className="space-y-2">
-          {mapped.map((m, idx) => (
-            <div
-              key={m.fieldKey}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData("text/plain", String(idx));
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
-                if (fromIdx === idx || isNaN(fromIdx)) return;
-                setMapped((prev) => {
-                  const next = [...prev];
-                  const [removed] = next.splice(fromIdx, 1);
-                  next.splice(idx, 0, removed);
-                  return next;
-                });
-              }}
-              className="flex cursor-grab flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3 active:cursor-grabbing"
-            >
-              <span className="font-medium text-zinc-700">{m.sourceColumnTitle}</span>
-              <select
-                value={m.purpose}
-                onChange={(e) =>
-                  updateMapping(idx, {
-                    purpose: e.target.value,
-                    displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
-                  })
-                }
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+          <div className="grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(140px,1.5fr)_auto] gap-3 rounded border-b border-zinc-200 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <span>Column</span>
+            <span>Purpose</span>
+            <span>Display label</span>
+            <span />
+          </div>
+          {mapped.map((m, idx) => {
+            const col = columns.find((c) => c.id === m.sourceColumnId);
+            const colType = col?.type ?? "—";
+            const colLocked = col?.locked ?? false;
+            const isEditablePurpose = m.purpose === "score" || m.purpose === "comments";
+            const lockedConflict = colLocked && isEditablePurpose;
+            return (
+              <div
+                key={m.fieldKey}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", String(idx));
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                  if (fromIdx === idx || isNaN(fromIdx)) return;
+                  setMapped((prev) => {
+                    const next = [...prev];
+                    const [removed] = next.splice(fromIdx, 1);
+                    next.splice(idx, 0, removed);
+                    return next;
+                  });
+                }}
+                className={`grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(140px,1.5fr)_auto] gap-3 items-center rounded border p-3 active:cursor-grabbing cursor-grab ${lockedConflict ? "border-amber-300 bg-amber-50/50" : "border-zinc-200 bg-zinc-50"}`}
               >
-                {PURPOSES.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={m.displayLabel}
-                onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
-                placeholder="Display label"
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => removeMapping(idx)}
-                className="text-sm text-red-600 hover:underline"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+                <div className="min-w-0">
+                  <span className="font-medium text-zinc-700">{m.sourceColumnTitle}</span>
+                  <div className="mt-0.5 flex flex-wrap gap-1">
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-mono text-zinc-600" title="Smartsheet column type">
+                      {colType}
+                    </span>
+                    {colLocked && (
+                      <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800" title="Column is locked in Smartsheet — reviewers cannot write to it">
+                        Locked
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <select
+                  value={m.purpose}
+                  onChange={(e) =>
+                    updateMapping(idx, {
+                      purpose: e.target.value,
+                      displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
+                    })
+                  }
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                  title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
+                >
+                  {(() => {
+                    const options = getPurposesForColumnType(colType);
+                    const current = PURPOSES.find((p) => p.value === m.purpose);
+                    const currentIncluded = options.some((p) => p.value === m.purpose);
+                    const toShow = currentIncluded ? options : current ? [...options, current] : options;
+                    return toShow.map((p) => (
+                      <option key={p.value} value={p.value} title={p.desc}>
+                        {p.label}
+                      </option>
+                    ));
+                  })()}
+                </select>
+                <input
+                  type="text"
+                  value={m.displayLabel}
+                  onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
+                  placeholder="Display label"
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeMapping(idx)}
+                  className="text-sm text-red-600 hover:underline justify-self-end"
+                >
+                  Remove
+                </button>
+                {lockedConflict && (
+                  <div className="col-span-full text-xs text-amber-700">
+                    This column is locked in Smartsheet. Making it editable here will cause write conflicts. Use a different column or unlock it in Smartsheet.
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 

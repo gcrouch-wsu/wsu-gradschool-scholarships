@@ -2,6 +2,7 @@ import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { AssignProgramForm } from "./AssignProgramForm";
 import { CreateConnectionForm } from "./CreateConnectionForm";
+import { DeleteConnectionButton } from "./DeleteConnectionButton";
 import { RotateButton } from "./RotateButton";
 import { TestButton } from "./TestButton";
 
@@ -74,6 +75,7 @@ export default async function ConnectionsPage() {
                 />
                 <TestButton connectionId={c.id} />
                 <RotateButton connectionId={c.id} connectionName={c.name} />
+                <DeleteConnectionButton connectionId={c.id} connectionName={c.name} />
               </div>
             </div>
           ))

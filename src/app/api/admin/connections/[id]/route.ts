@@ -54,3 +54,37 @@ export async function PATCH(
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!user.is_platform_admin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  const { rows: connRows } = await query<{ id: string; name: string }>(
+    "SELECT id, name FROM connections WHERE id = $1",
+    [id]
+  );
+  if (connRows.length === 0) {
+    return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+  }
+
+  await query("DELETE FROM connections WHERE id = $1", [id]);
+  await logAudit({
+    actorUserId: user.id,
+    actionType: "connection.deleted",
+    targetType: "connection",
+    targetId: id,
+    metadata: { name: connRows[0].name },
+  });
+
+  return NextResponse.json({ success: true });
+}

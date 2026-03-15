@@ -11,6 +11,7 @@ export interface SmartsheetColumn {
   title: string;
   type: string;
   options?: string[];
+  locked?: boolean;
 }
 
 export interface SmartsheetSheet {
@@ -126,6 +127,7 @@ export async function getSheetSchema(
         title: string;
         type: string;
         options?: string[];
+        locked?: boolean;
       }>;
     };
     const columns = (data.columns ?? []).map((c) => ({
@@ -134,6 +136,7 @@ export async function getSheetSchema(
       title: c.title,
       type: c.type,
       options: c.options,
+      locked: c.locked,
     }));
     return {
       ok: true,

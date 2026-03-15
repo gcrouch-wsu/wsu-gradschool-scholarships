@@ -166,25 +166,39 @@ export default async function CycleDetailPage({
       )}
 
       <div className="space-y-6">
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-medium text-zinc-900">
-              Smartsheet connection
-            </h2>
-            <div className="flex items-center gap-4">
-              <PublishConfigButton
-                cycleId={cycleId}
-                latestVersion={configVersions[0] ?? null}
-                publishedVersionId={cycleWithPublished[0]?.published_config_version_id ?? null}
-              />
-              <Link
-                href={`/admin/scholarships/${programId}/cycles/${cycleId}/builder`}
-                className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
-              >
-                Configure fields & layout →
-              </Link>
-            </div>
+        <section className="rounded-lg border border-zinc-200 bg-white p-5">
+          <h2 className="text-lg font-medium text-zinc-900">
+            Fields & layout (what reviewers see)
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Map Smartsheet columns to fields, set labels, visibility, and edit permissions per role. Drag to reorder. Changes are saved as new versions; publish to make them live for reviewers.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              href={`/admin/scholarships/${programId}/cycles/${cycleId}/builder`}
+              className="inline-flex items-center gap-2 rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Configure fields & layout
+              <span aria-hidden>→</span>
+            </Link>
+            <Link
+              href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
+              className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              Preview as reviewer
+            </Link>
+            <PublishConfigButton
+              cycleId={cycleId}
+              latestVersion={configVersions[0] ?? null}
+              publishedVersionId={cycleWithPublished[0]?.published_config_version_id ?? null}
+            />
           </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-lg font-medium text-zinc-900">
+            Smartsheet connection
+          </h2>
           <CycleSheetConfig
             cycleId={cycleId}
             connectionId={cycle.connection_id}
