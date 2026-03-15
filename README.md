@@ -38,6 +38,12 @@ Admin-managed application layer on top of Smartsheet for scholarship-style revie
 
 5. Log in at `/login` with the seeded admin account.
 
+## Deploying changes (Vercel)
+
+- **Code changes:** Commit and push to GitHub. Vercel auto-deploys on push.
+- **Environment variable changes:** Redeploy in Vercel (Deployments → ⋮ → Redeploy). No commit needed.
+- See `instruction.md` for full setup and deployment details.
+
 ## Project structure
 
 - `src/app/` – Next.js App Router pages and API routes

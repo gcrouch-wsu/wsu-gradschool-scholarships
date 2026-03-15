@@ -8,12 +8,14 @@ const globalForDb = globalThis as unknown as { pool: Pool | undefined };
 
 export function getPool(): Pool {
   if (!globalForDb.pool) {
-    const connectionString = process.env.DATABASE_URL;
+    let connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error(
         "DATABASE_URL is not set. Configure Postgres connection for local dev and Vercel."
       );
     }
+    const withoutSslmode = connectionString.replace(/([?&])sslmode=[^&]*/g, (_, p) => (p === "?" ? "?" : "")).replace(/\?$/, "");
+    connectionString = withoutSslmode + (withoutSslmode.includes("?") ? "&" : "?") + "sslmode=no-verify";
     globalForDb.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },

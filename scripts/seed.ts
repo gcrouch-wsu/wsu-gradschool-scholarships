@@ -26,8 +26,10 @@ async function main() {
     process.exit(1);
   }
 
+  const withoutSslmode = DATABASE_URL.replace(/([?&])sslmode=[^&]*/g, (_, p) => (p === "?" ? "?" : "")).replace(/\?$/, "");
+  const connectionString = withoutSslmode + (withoutSslmode.includes("?") ? "&" : "?") + "sslmode=no-verify";
   const pool = new Pool({
-    connectionString: DATABASE_URL,
+    connectionString,
     ssl: { rejectUnauthorized: false },
   });
 

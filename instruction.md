@@ -2,6 +2,11 @@
 
 **Placeholder convention:** We use `paste-your-database-url-here`, `your-email@wsu.edu`, and `YourPassword123` consistently. Replace each with your real value; do not introduce new placeholder names.
 
+**Deploying changes — when to do what:**
+- **Code changes** (edits to `.ts`, `.tsx`, `.sql`, etc.): Ask the assistant to **commit and push** to GitHub. Vercel will auto-deploy from the push.
+- **Environment variable changes** (in Vercel → Settings → Environment Variables): **Redeploy in Vercel** — Deployments → ⋮ on latest → Redeploy. No commit needed.
+- **Both code and env vars changed:** Commit and push first, then redeploy in Vercel so the new build picks up the new env vars.
+
 ---
 
 ## I'm at the login page. What do I do?
@@ -26,7 +31,7 @@ You need the same `DATABASE_URL` that Vercel uses.
 2. Click **Create Database** → choose **Supabase** (or Postgres if offered). Create it and attach it to your project.
 3. Vercel will add the connection string automatically (often as `POSTGRES_URL`). If you see `POSTGRES_URL` but not `DATABASE_URL`, add `DATABASE_URL` with the same value.
 4. Add `ENCRYPTION_KEY`: **Settings** → **Environment Variables** → **Add New** → Name: `ENCRYPTION_KEY`, Value: run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` in your terminal (PowerShell or Bash) and paste the output.
-5. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
+5. **Redeploy in Vercel** (Deployments → ⋮ on latest → Redeploy). No commit needed — env vars only.
 
 **Option B: Create Supabase at supabase.com** (if Vercel only shows Blob / Edge Config)
 
@@ -35,7 +40,7 @@ You need the same `DATABASE_URL` that Vercel uses.
 3. In Vercel → **Settings** → **Environment Variables** → **Add New**:
    - `DATABASE_URL` = (paste the Supabase URI)
    - `ENCRYPTION_KEY` = run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (PowerShell or Bash) and paste the output
-4. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
+4. **Redeploy in Vercel** (Deployments → ⋮ on latest → Redeploy). No commit needed — env vars only.
 
 **If you already have variables:** Find `DATABASE_URL` or `POSTGRES_URL` and copy its value.
 
@@ -119,7 +124,9 @@ As the first admin, you have full access. Here's the order of operations:
 | Can't log in / wrong password | Use the exact email and password you put in the seed command. If you mistyped them, run the seed again with the correct values. (Seed only creates a user if the users table is empty.) |
 | No **Connections** or **Users** in the nav | You're logged in as a scholarship admin. Only platform admins see those. The first user from the seed is always a platform admin. |
 | PowerShell: "Unexpected token" when generating ENCRYPTION_KEY | Don't type `@` before the command. Use: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| "self-signed certificate in certificate chain" when running seed | The seed script disables TLS verification for the one-time seed run. If you still see this, pull the latest code and try again. |
+| "self-signed certificate in certificate chain" when running seed or logging in | The app uses `sslmode=no-verify` for Supabase. Pull the latest code. For seed: run again. For login: ask the assistant to commit and push so Vercel deploys the fix. |
+| I changed code — do I commit or redeploy? | **Commit and push** (ask the assistant). Vercel auto-deploys on push. |
+| I changed env vars in Vercel — do I commit or redeploy? | **Redeploy in Vercel** only. No commit needed. |
 
 ---
 
