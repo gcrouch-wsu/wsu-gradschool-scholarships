@@ -7,10 +7,12 @@ export function DeleteCycleButton({
   cycleId,
   programId,
   cycleLabel,
+  compact = false,
 }: {
   cycleId: string;
   programId: string;
   cycleLabel: string;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -40,10 +42,12 @@ export function DeleteCycleButton({
 
   if (confirming) {
     return (
-      <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
-        <p className="mb-2 text-sm font-medium text-red-900">
-          Delete &quot;{cycleLabel}&quot;? This cannot be undone. All field config, roles, and assignments will be removed.
-        </p>
+      <div className={compact ? "flex items-center gap-2" : "mt-6 rounded-lg border border-red-200 bg-red-50 p-4"}>
+        {!compact && (
+          <p className="mb-2 text-sm font-medium text-red-900">
+            Delete &quot;{cycleLabel}&quot;? This cannot be undone. All field config, roles, and assignments will be removed.
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             type="button"
@@ -51,7 +55,7 @@ export function DeleteCycleButton({
             disabled={deleting}
             className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
           >
-            {deleting ? "Deleting…" : "Delete cycle"}
+            {deleting ? "Deleting…" : compact ? "Delete" : "Delete cycle"}
           </button>
           <button
             type="button"

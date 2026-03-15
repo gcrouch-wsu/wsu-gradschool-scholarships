@@ -669,16 +669,18 @@ export function FieldMappingBuilder({
   }
 
   function ensurePermissions(m: MappedField): MappedField {
-    if (m.permissions?.length) return m;
     const roles = data?.roles ?? [];
     const canEdit = isPurposeEditable(m.purpose);
     return {
       ...m,
-      permissions: roles.map((r) => ({
-        roleId: r.id,
-        canView: true,
-        canEdit,
-      })),
+      permissions: roles.map((r) => {
+        const existing = m.permissions?.find((p) => p.roleId === r.id);
+        return {
+          roleId: r.id,
+          canView: existing?.canView ?? true,
+          canEdit,
+        };
+      }),
     };
   }
 
@@ -774,7 +776,7 @@ export function FieldMappingBuilder({
 
       <AccordionCard title="Purpose & role visibility">
         <p className="mb-3 text-sm text-zinc-600">
-          Customize purpose labels and descriptions. Mark purposes as <strong>editable</strong> to allow reviewers to change values (writes to Smartsheet). For editable fields, use the role table below to control who can view and edit.
+          Customize purpose labels and descriptions. Mark purposes as <strong>editable</strong> to allow reviewers to change values (writes to Smartsheet). If a purpose is editable, all roles can edit fields with that purpose.
         </p>
         <div className="mb-4 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-2">
           {PURPOSES.map((p) => (
@@ -821,90 +823,6 @@ export function FieldMappingBuilder({
             </div>
           ))}
         </div>
-        {data.roles?.length > 0 && mapped.some((m) => isPurposeEditable(m.purpose)) && (
-          <>
-            <p className="mb-2 text-xs text-zinc-500">
-              <strong>Edit = reviewer can change the value and it writes to Smartsheet.</strong>
-            </p>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200">
-                    <th className="py-2 text-left font-medium text-zinc-700">Field</th>
-                    {data.roles.map((r) => (
-                      <th key={r.id} className="px-2 py-2 text-left font-medium text-zinc-700">
-                        {r.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mapped
-                    .filter((m) => isPurposeEditable(m.purpose))
-                    .map((m) => (
-                      <tr key={m.fieldKey} className="border-b border-zinc-100">
-                        <td className="py-2">{m.displayLabel}</td>
-                        {data.roles!.map((r) => {
-                          const perm = m.permissions?.find((p) => p.roleId === r.id);
-                          const canEdit = perm?.canEdit ?? isPurposeEditable(m.purpose);
-                          return (
-                            <td key={r.id} className="px-2 py-2">
-                              <label className="flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={perm?.canView ?? true}
-                                  onChange={(e) => {
-                                    const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
-                                    const perms = [...(m.permissions ?? [])];
-                                    const pi = perms.findIndex((p) => p.roleId === r.id);
-                                    if (pi >= 0) {
-                                      perms[pi] = { ...perms[pi], canView: e.target.checked };
-                                    } else {
-                                      perms.push({
-                                        roleId: r.id,
-                                        canView: e.target.checked,
-                                        canEdit: isPurposeEditable(m.purpose),
-                                      });
-                                    }
-                                    updateMapping(idx, { permissions: perms });
-                                  }}
-                                />
-                                <span className="text-xs">view</span>
-                              </label>
-                              {isPurposeEditable(m.purpose) && (
-                                <label className="mt-1 flex items-center gap-1" title="Edit = writes to Smartsheet">
-                                  <input
-                                    type="checkbox"
-                                    checked={canEdit}
-                                    onChange={(e) => {
-                                      const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
-                                      const perms = [...(m.permissions ?? ensurePermissions(m).permissions ?? [])];
-                                      const pi = perms.findIndex((p) => p.roleId === r.id);
-                                      if (pi >= 0) {
-                                        perms[pi] = { ...perms[pi], canEdit: e.target.checked };
-                                      } else {
-                                        perms.push({
-                                          roleId: r.id,
-                                          canView: true,
-                                          canEdit: e.target.checked,
-                                        });
-                                      }
-                                      updateMapping(idx, { permissions: perms });
-                                    }}
-                                  />
-                                  <span className="text-xs">edit</span>
-                                </label>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
       </AccordionCard>
 
       <AccordionCard title="Columns" defaultOpen>

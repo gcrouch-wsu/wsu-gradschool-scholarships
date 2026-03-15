@@ -5,6 +5,7 @@ import { canManageProgram } from "@/lib/admin";
 import { query } from "@/lib/db";
 import { AddCycleForm } from "./AddCycleForm";
 import { ProgramAdminsSection } from "./ProgramAdminsSection";
+import { DeleteCycleButton } from "./cycles/[cycleId]/DeleteCycleButton";
 
 export default async function ProgramDetailPage({
   params,
@@ -92,17 +93,25 @@ export default async function ProgramDetailPage({
                     </span>
                   )}
                 </div>
-                <span
-                  className={`rounded px-2 py-1 text-xs font-medium ${
-                    c.status === "active"
-                      ? "bg-green-100 text-green-800"
-                      : c.status === "draft"
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-zinc-100 text-zinc-600"
-                  }`}
-                >
-                  {c.status}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-medium ${
+                      c.status === "active"
+                        ? "bg-green-100 text-green-800"
+                        : c.status === "draft"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                  <DeleteCycleButton
+                    cycleId={c.id}
+                    programId={id}
+                    cycleLabel={c.cycle_label}
+                    compact
+                  />
+                </div>
               </div>
             ))
           )}
