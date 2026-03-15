@@ -171,9 +171,15 @@ export function PreviewScoreForm({
             ))}
           </select>
         ) : (
-          <div className="mt-1 whitespace-pre-wrap text-zinc-600">
-            {String(edits[f.sourceColumnId] ?? f.value ?? "") || "—"}
-          </div>
+          <textarea
+            value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
+            onChange={(e) =>
+              setEdits((prev) => ({ ...prev, [f.sourceColumnId]: e.target.value }))
+            }
+            rows={4}
+            placeholder="Enter comments or recommendations..."
+            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
         )}
       </div>
     );

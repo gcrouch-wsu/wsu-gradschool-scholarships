@@ -93,6 +93,7 @@ export function CreateUserForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          autoComplete="off"
           className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
         />
       </div>
@@ -107,6 +108,7 @@ export function CreateUserForm() {
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
+          autoComplete="new-password"
           className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
         />
         <p className="mt-1 text-xs text-zinc-500">

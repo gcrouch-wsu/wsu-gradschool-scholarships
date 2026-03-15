@@ -7,6 +7,7 @@ import { ApplyTemplateForm } from "./ApplyTemplateForm";
 import { CloneConfigForm } from "./CloneConfigForm";
 import { ExportImportConfig } from "./ExportImportConfig";
 import { CycleSheetConfig } from "./CycleSheetConfig";
+import { CycleStatusToggle } from "./CycleStatusToggle";
 import { ExternalReviewersToggle } from "./ExternalReviewersToggle";
 import { PublishConfigButton } from "./PublishConfigButton";
 import { RemoveAssignmentButton } from "./RemoveAssignmentButton";
@@ -154,6 +155,7 @@ export default async function CycleDetailPage({
           )}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-4">
+          <CycleStatusToggle cycleId={cycleId} status={cycle.status} />
           <ExternalReviewersToggle
             cycleId={cycleId}
             allowExternalReviewers={cycle.allow_external_reviewers}
