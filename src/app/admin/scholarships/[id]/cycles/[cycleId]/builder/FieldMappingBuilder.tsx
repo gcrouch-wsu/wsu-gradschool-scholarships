@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -19,17 +19,6 @@ const PURPOSES = [
   { value: "metadata", label: "Metadata", desc: "Other read-only info (dates, IDs, etc.)" },
   { value: "attachment", label: "Attachment", desc: "Row-level attachments" },
 ] as const;
-
-/** Color-coded badges for each purpose — used in legend and field rows for visual consistency. */
-const PURPOSE_STYLES: Record<string, string> = {
-  identity: "bg-blue-100 text-blue-700",
-  subtitle: "bg-blue-50 text-blue-600",
-  narrative: "bg-violet-100 text-violet-700",
-  score: "bg-amber-100 text-amber-700",
-  comments: "bg-amber-50 text-amber-700",
-  metadata: "bg-zinc-200 text-zinc-600",
-  attachment: "bg-teal-100 text-teal-700",
-};
 
 /**
  * Map Smartsheet column type → purposes that make sense for that type.
@@ -55,10 +44,11 @@ const SMARTSHEET_TYPE_TO_PURPOSES: Record<string, { purposes: string[]; note?: s
 };
 
 function getPurposesForColumnType(colType: string): Array<(typeof PURPOSES)[number]> {
-  const entry = SMARTSHEET_TYPE_TO_PURPOSES[colType];
+  // When type is missing/unknown ("—"), use TEXT_NUMBER so user can switch between identity, metadata, etc.
+  const effectiveType = !colType || colType === "—" ? "TEXT_NUMBER" : colType;
+  const entry = SMARTSHEET_TYPE_TO_PURPOSES[effectiveType];
   const allowed = entry?.purposes;
   if (!allowed?.length) {
-    // Unknown type: restrict to metadata only rather than showing all options.
     return PURPOSES.filter((p) => p.value === "metadata");
   }
   return PURPOSES.filter((p) => allowed.includes(p.value));
@@ -87,6 +77,30 @@ const LAYOUTS = [
   { value: "accordion", label: "Accordion" },
   { value: "list_detail", label: "List and detail" },
 ];
+
+type PurposeOverride = { label?: string; desc?: string; editable?: boolean };
+
+function AccordionCard({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className="group rounded-lg border border-zinc-200 bg-white overflow-hidden"
+    >
+      <summary className="cursor-pointer list-none px-4 py-3 font-bold text-zinc-900 hover:bg-zinc-50">
+        {title}
+      </summary>
+      <div className="border-t border-zinc-200 px-4 pb-4 pt-3">{children}</div>
+    </details>
+  );
+}
 
 /** WSU brand palette — mirrors wsu-gradschool-tools newsletter editor */
 const WSU_COLORS = [
@@ -182,10 +196,9 @@ function LayoutPreview({
   const tabList = sections.length > 0
     ? sections
     : [
-        { section_key: "narrative", label: "Narrative & details", sort_order: 0 },
-        { section_key: "scores", label: "Scores & comments", sort_order: 1 },
+        { section_key: "main", label: "Review", sort_order: 0 },
       ];
-  const [activeTab, setActiveTab] = useState(tabList[0]?.section_key ?? "narrative");
+  const [activeTab, setActiveTab] = useState(tabList[0]?.section_key ?? "main");
 
   function getOptionsForField(m: MappedField): string[] {
     const col = columns.find((c) => c.id === m.sourceColumnId);
@@ -203,8 +216,6 @@ function LayoutPreview({
     acc[s.section_key] = unpinned.filter((m) => (m.sectionKey || tabList[0]?.section_key) === s.section_key);
     return acc;
   }, {} as Record<string, MappedField[]>);
-  const readOnlyFields = unpinned.filter((m) => m.purpose !== "score" && m.purpose !== "comments");
-  const editableFields = unpinned.filter((m) => m.purpose === "score" || m.purpose === "comments");
 
   const PinnedCard = pinnedFields.length > 0 ? (
     <div
@@ -325,24 +336,19 @@ function LayoutPreview({
       <div>
       {PinnedCard}
       <div className="space-y-2">
-        <details open className="rounded border border-zinc-200 bg-white">
-          <summary className="cursor-pointer px-4 py-2 font-medium text-zinc-900">
-            Narrative & details
-          </summary>
-          <div className="space-y-2 border-t border-zinc-200 px-4 pb-4 pt-2">
-            {readOnlyFields.map(renderField)}
-          </div>
-        </details>
-        {editableFields.length > 0 && (
-          <details className="rounded border border-zinc-200 bg-white">
-            <summary className="cursor-pointer px-4 py-2 font-medium text-zinc-900">
-              Scores & comments
-            </summary>
-            <div className="space-y-2 border-t border-zinc-200 px-4 pb-4 pt-2">
-              {editableFields.map(renderField)}
-            </div>
-          </details>
-        )}
+        {tabList.map((s) => {
+          const sectionFields = fieldsBySection[s.section_key] ?? [];
+          return (
+            <details key={s.section_key} className="rounded border border-zinc-200 bg-white">
+              <summary className="cursor-pointer px-4 py-2 font-medium text-zinc-900">
+                {s.label}
+              </summary>
+              <div className="space-y-2 border-t border-zinc-200 px-4 pb-4 pt-2">
+                {sectionFields.length > 0 ? sectionFields.map(renderField) : <p className="text-sm text-zinc-500">No fields in this section</p>}
+              </div>
+            </details>
+          );
+        })}
       </div>
       </div>
     );
@@ -369,18 +375,17 @@ function LayoutPreview({
   return (
     <div className="space-y-4">
       {PinnedCard}
-      {readOnlyFields.length > 0 && (
-        <div className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
-          <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>Narrative & details</div>
-          <div className="space-y-3">{readOnlyFields.map(renderField)}</div>
-        </div>
-      )}
-      {editableFields.length > 0 && (
-        <div className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
-          <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>Scores & comments</div>
-          <div className="space-y-3">{editableFields.map(renderField)}</div>
-        </div>
-      )}
+      {tabList.map((s) => {
+        const sectionFields = fieldsBySection[s.section_key] ?? [];
+        return (
+          <div key={s.section_key} className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
+            <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>{s.label}</div>
+            <div className="space-y-3">
+              {sectionFields.length > 0 ? sectionFields.map(renderField) : <p className="text-sm text-zinc-500">No fields in this section</p>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -485,6 +490,7 @@ export function FieldMappingBuilder({
   const [sections, setSections] = useState<ViewSection[]>([]);
   const [viewType, setViewType] = useState("tabbed");
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
+  const [purposeOverrides, setPurposeOverrides] = useState<Record<string, PurposeOverride>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -515,6 +521,7 @@ export function FieldMappingBuilder({
           const settings = d.viewConfigs[0].settings_json;
           if (settings?.colors) setColors({ ...DEFAULT_COLORS, ...settings.colors });
           pinnedFieldKeys = settings?.pinnedFieldKeys ?? [];
+          if (settings?.purposeOverrides) setPurposeOverrides(settings.purposeOverrides);
         }
         if (d.viewSections?.length > 0) {
           setSections(
@@ -529,8 +536,7 @@ export function FieldMappingBuilder({
           );
         } else {
           setSections([
-            { section_key: "narrative", label: "Narrative & details", sort_order: 0 },
-            { section_key: "scores", label: "Scores & comments", sort_order: 1 },
+            { section_key: "main", label: "Review", sort_order: 0 },
           ]);
         }
         if (d.fieldConfigs?.length > 0) {
@@ -611,7 +617,7 @@ export function FieldMappingBuilder({
     const section_key = `section_${n}`;
     setSections((prev) => [
       ...prev,
-      { section_key, label: `Tab ${n + 1}`, sort_order: n },
+      { section_key, label: `Section ${n + 1}`, sort_order: n },
     ]);
   }
 
@@ -649,10 +655,20 @@ export function FieldMappingBuilder({
     );
   }
 
+  function isPurposeEditable(purpose: string): boolean {
+    const override = purposeOverrides[purpose];
+    if (override?.editable !== undefined) return override.editable;
+    return purpose === "score" || purpose === "comments";
+  }
+
+  function getPurposeLabel(purpose: string): string {
+    return purposeOverrides[purpose]?.label ?? PURPOSES.find((p) => p.value === purpose)?.label ?? purpose;
+  }
+
   function ensurePermissions(m: MappedField): MappedField {
     if (m.permissions?.length) return m;
     const roles = data?.roles ?? [];
-    const canEdit = m.purpose === "score" || m.purpose === "comments";
+    const canEdit = isPurposeEditable(m.purpose);
     return {
       ...m,
       permissions: roles.map((r) => ({
@@ -688,7 +704,8 @@ export function FieldMappingBuilder({
             };
           }),
           viewType,
-          sections: viewType === "tabbed" && sections.length > 0
+          purposeOverrides,
+          sections: ["tabbed", "stacked", "accordion"].includes(viewType) && sections.length > 0
             ? sections.map((s, i) => ({ section_key: s.section_key, label: s.label, sort_order: s.sort_order ?? i }))
             : undefined,
         }),
@@ -715,82 +732,194 @@ export function FieldMappingBuilder({
     (c) => !mapped.some((m) => m.sourceColumnId === c.id)
   );
 
+  const usesSections = ["tabbed", "stacked", "accordion"].includes(viewType);
+  const gridColsBase = "20px minmax(120px,1fr) minmax(70px,1fr) 50px minmax(100px,1fr) minmax(120px,1.5fr)";
+  const gridColsFull = usesSections
+    ? `${gridColsBase} minmax(100px,1fr) 60px auto`
+    : `${gridColsBase} 60px auto`;
+
   return (
-    <div className="mt-6 space-y-6">
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-zinc-900">1. Map columns to purpose</h2>
-        <p className="mb-4 text-sm text-zinc-600">
-          Purpose controls how a field appears to reviewers. <strong>Score</strong> and <strong>Comments</strong> are the only editable purposes — reviewers fill them in and the values write back to Smartsheet. Everything else is read-only. Available purposes are filtered by each column&apos;s Smartsheet type.
+    <div className="mt-6 space-y-4">
+      <AccordionCard title="Map columns" defaultOpen>
+        <p className="mb-3 text-sm text-zinc-600">
+          Click a column to add it to the field mapping. Unmapped columns are shown below.
         </p>
-
-        <div className="mb-4">
-          <div className="mb-1 text-xs text-zinc-500">
-            Click a column to add it. Unmapped columns are shown below.
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {unmappedColumns.map((col) => (
-              <button
-                key={col.id}
-                type="button"
-                onClick={() => addColumn(col)}
-                className="flex items-center gap-1.5 rounded border border-zinc-300 px-2.5 py-1.5 text-sm hover:border-zinc-400 hover:bg-zinc-50"
-              >
-                <span>+ {col.title}</span>
-                <span className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] font-mono text-zinc-500">
-                  {col.type}
+        <div className="flex flex-wrap gap-2">
+          {unmappedColumns.map((col) => (
+            <button
+              key={col.id}
+              type="button"
+              onClick={() => addColumn(col)}
+              className="flex items-center gap-1.5 rounded border border-zinc-300 px-2.5 py-1.5 text-sm hover:border-zinc-400 hover:bg-zinc-50"
+            >
+              <span>+ {col.title}</span>
+              <span className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] font-mono text-zinc-500">
+                {col.type}
+              </span>
+              {col.locked && (
+                <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
+                  locked
                 </span>
-                {col.locked && (
-                  <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700">
-                    locked
-                  </span>
-                )}
-              </button>
-            ))}
-            {unmappedColumns.length === 0 && columns.length > 0 && (
-              <span className="text-sm text-zinc-500">All columns mapped</span>
-            )}
-          </div>
+              )}
+            </button>
+          ))}
+          {unmappedColumns.length === 0 && columns.length > 0 && (
+            <span className="text-sm text-zinc-500">All columns mapped</span>
+          )}
         </div>
+      </AccordionCard>
 
-        <div className="mb-4 rounded-lg border border-zinc-100 bg-zinc-50 p-3">
-          <div className="mb-2 flex items-center gap-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Purpose</span>
-            <span className="text-[11px] text-zinc-400">
-              <span className="rounded bg-blue-50 px-1 text-blue-600">Blue = read-only</span>
-              {" · "}
-              <span className="rounded bg-amber-50 px-1 text-amber-700">Amber = reviewer can edit</span>
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
-            {PURPOSES.map((p) => (
-              <div key={p.value} className="flex items-start gap-1.5">
-                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${PURPOSE_STYLES[p.value] ?? "bg-zinc-100 text-zinc-500"}`}>
-                  {p.label}
-                </span>
-                <span className="text-xs text-zinc-500">{p.desc}</span>
+      <AccordionCard title="Purpose & role visibility">
+        <p className="mb-3 text-sm text-zinc-600">
+          Customize purpose labels and descriptions. Mark purposes as <strong>editable</strong> to allow reviewers to change values (writes to Smartsheet). For editable fields, use the role table below to control who can view and edit.
+        </p>
+        <div className="mb-4 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-2">
+          {PURPOSES.map((p) => (
+            <div key={p.value} className="flex flex-col gap-1.5 rounded border border-zinc-200 bg-white p-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={purposeOverrides[p.value]?.label ?? p.label}
+                  onChange={(e) =>
+                    setPurposeOverrides((prev) => ({
+                      ...prev,
+                      [p.value]: { ...prev[p.value], label: e.target.value || undefined },
+                    }))
+                  }
+                  placeholder={p.label}
+                  className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm font-medium"
+                />
+                <label className="flex shrink-0 items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={purposeOverrides[p.value]?.editable ?? (p.value === "score" || p.value === "comments")}
+                    onChange={(e) =>
+                      setPurposeOverrides((prev) => ({
+                        ...prev,
+                        [p.value]: { ...prev[p.value], editable: e.target.checked },
+                      }))
+                    }
+                  />
+                  editable
+                </label>
               </div>
-            ))}
-          </div>
+              <input
+                type="text"
+                value={purposeOverrides[p.value]?.desc ?? p.desc}
+                onChange={(e) =>
+                  setPurposeOverrides((prev) => ({
+                    ...prev,
+                    [p.value]: { ...prev[p.value], desc: e.target.value || undefined },
+                  }))
+                }
+                placeholder={p.desc}
+                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600"
+              />
+            </div>
+          ))}
         </div>
+        {data.roles?.length > 0 && mapped.some((m) => isPurposeEditable(m.purpose)) && (
+          <>
+            <p className="mb-2 text-xs text-zinc-500">
+              <strong>Edit = reviewer can change the value and it writes to Smartsheet.</strong>
+            </p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200">
+                    <th className="py-2 text-left font-medium text-zinc-700">Field</th>
+                    {data.roles.map((r) => (
+                      <th key={r.id} className="px-2 py-2 text-left font-medium text-zinc-700">
+                        {r.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mapped
+                    .filter((m) => isPurposeEditable(m.purpose))
+                    .map((m) => (
+                      <tr key={m.fieldKey} className="border-b border-zinc-100">
+                        <td className="py-2">{m.displayLabel}</td>
+                        {data.roles!.map((r) => {
+                          const perm = m.permissions?.find((p) => p.roleId === r.id);
+                          const canEdit = perm?.canEdit ?? isPurposeEditable(m.purpose);
+                          return (
+                            <td key={r.id} className="px-2 py-2">
+                              <label className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={perm?.canView ?? true}
+                                  onChange={(e) => {
+                                    const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
+                                    const perms = [...(m.permissions ?? [])];
+                                    const pi = perms.findIndex((p) => p.roleId === r.id);
+                                    if (pi >= 0) {
+                                      perms[pi] = { ...perms[pi], canView: e.target.checked };
+                                    } else {
+                                      perms.push({
+                                        roleId: r.id,
+                                        canView: e.target.checked,
+                                        canEdit: isPurposeEditable(m.purpose),
+                                      });
+                                    }
+                                    updateMapping(idx, { permissions: perms });
+                                  }}
+                                />
+                                <span className="text-xs">view</span>
+                              </label>
+                              {isPurposeEditable(m.purpose) && (
+                                <label className="mt-1 flex items-center gap-1" title="Edit = writes to Smartsheet">
+                                  <input
+                                    type="checkbox"
+                                    checked={canEdit}
+                                    onChange={(e) => {
+                                      const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
+                                      const perms = [...(m.permissions ?? ensurePermissions(m).permissions ?? [])];
+                                      const pi = perms.findIndex((p) => p.roleId === r.id);
+                                      if (pi >= 0) {
+                                        perms[pi] = { ...perms[pi], canEdit: e.target.checked };
+                                      } else {
+                                        perms.push({
+                                          roleId: r.id,
+                                          canView: true,
+                                          canEdit: e.target.checked,
+                                        });
+                                      }
+                                      updateMapping(idx, { permissions: perms });
+                                    }}
+                                  />
+                                  <span className="text-xs">edit</span>
+                                </label>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </AccordionCard>
 
+      <AccordionCard title="Columns" defaultOpen>
         <p className="mb-2 text-xs text-zinc-500">
           Drag to reorder. Order determines display in reviewer layout.
         </p>
         <div className="space-y-2">
           <div
             className="grid gap-3 rounded border-b border-zinc-200 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-500"
-            style={{
-              gridTemplateColumns: viewType === "tabbed"
-                ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) 60px auto"
-                : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) 60px auto",
-            }}
+            style={{ gridTemplateColumns: gridColsFull }}
           >
             <span className="w-5" aria-hidden />
             <span>Column</span>
             <span>Type</span>
+            <span>Locked</span>
             <span>Purpose</span>
             <span>Display label</span>
-            {viewType === "tabbed" && <span>Tab</span>}
+            {usesSections && <span>Section</span>}
             <span>Header</span>
             <span />
           </div>
@@ -798,11 +927,9 @@ export function FieldMappingBuilder({
             const col = columns.find((c) => c.id === m.sourceColumnId);
             const colType = col?.type ?? "—";
             const colLocked = col?.locked ?? false;
-            const isEditablePurpose = m.purpose === "score" || m.purpose === "comments";
+            const isEditablePurpose = isPurposeEditable(m.purpose);
             const lockedConflict = colLocked && isEditablePurpose;
-            const gridCols = viewType === "tabbed"
-              ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) 60px auto"
-              : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) 60px auto";
+            const gridCols = gridColsFull;
             return (
               <div
                 key={m.fieldKey}
@@ -847,19 +974,18 @@ export function FieldMappingBuilder({
                 </div>
                 <div className="min-w-0">
                   <span className="font-medium text-zinc-700">{m.sourceColumnTitle}</span>
-                  {colLocked && !lockedConflict && (
-                    <span className="ml-1 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800" title="Column is locked in Smartsheet">
-                      Locked
-                    </span>
-                  )}
                 </div>
                 <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-mono text-zinc-600" title="Smartsheet column type">
                   {colType}
                 </span>
+                <div className="flex items-center" title="Column is locked in Smartsheet">
+                  {colLocked ? (
+                    <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">🔒</span>
+                  ) : (
+                    <span className="text-zinc-300">—</span>
+                  )}
+                </div>
                 <div className="flex flex-col gap-1">
-                  <span className={`self-start rounded px-1.5 py-0.5 text-[10px] font-medium ${PURPOSE_STYLES[m.purpose] ?? "bg-zinc-100 text-zinc-500"}`}>
-                    {PURPOSES.find((p) => p.value === m.purpose)?.label ?? m.purpose}
-                  </span>
                   <select
                     value={m.purpose}
                     onChange={(e) =>
@@ -877,8 +1003,8 @@ export function FieldMappingBuilder({
                       const currentIncluded = options.some((p) => p.value === m.purpose);
                       const toShow = currentIncluded ? options : current ? [...options, current] : options;
                       return toShow.map((p) => (
-                        <option key={p.value} value={p.value} title={p.desc}>
-                          {p.label}
+                        <option key={p.value} value={p.value} title={purposeOverrides[p.value]?.desc ?? p.desc}>
+                          {getPurposeLabel(p.value)}
                         </option>
                       ));
                     })()}
@@ -891,7 +1017,7 @@ export function FieldMappingBuilder({
                   placeholder="Display label"
                   className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
                 />
-                {viewType === "tabbed" && (
+                {usesSections && (
                   m.pinned ? (
                     <span className="text-xs text-zinc-400 italic">—</span>
                   ) : (
@@ -928,138 +1054,9 @@ export function FieldMappingBuilder({
             );
           })}
         </div>
-      </section>
+      </AccordionCard>
 
-      {viewType === "tabbed" && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="mb-1 font-medium text-zinc-900">1b. Tabs</h2>
-          <p className="mb-3 text-sm text-zinc-600">
-            Create tabs and assign fields using the Tab column in the field table above.
-          </p>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-700">Tabs</span>
-            <button
-              type="button"
-              onClick={addSection}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              + Add tab
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {sections.map((s, i) => (
-              <div key={s.section_key} className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-1">
-                <input
-                  type="text"
-                  value={s.label}
-                  onChange={(e) => updateSection(i, { label: e.target.value })}
-                  className="w-32 rounded border-0 bg-transparent px-1 py-0.5 text-sm focus:ring-1 focus:ring-zinc-400"
-                  placeholder="Tab label"
-                />
-                {sections.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeSection(i)}
-                    className="text-xs text-red-600 hover:text-red-700"
-                    title="Remove tab"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-zinc-900">2. Role visibility</h2>
-        <p className="mb-3 text-sm text-zinc-600">
-          By default, all roles can view all fields. Score and comments fields are editable by reviewers.
-        </p>
-        {data.roles?.length > 0 && mapped.some((m) => m.purpose === "score" || m.purpose === "comments") && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-200">
-                  <th className="py-2 text-left font-medium text-zinc-700">Field</th>
-                  {data.roles.map((r) => (
-                    <th key={r.id} className="px-2 py-2 text-left font-medium text-zinc-700">
-                      {r.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {mapped
-                  .filter((m) => m.purpose === "score" || m.purpose === "comments")
-                  .map((m) => (
-                    <tr key={m.fieldKey} className="border-b border-zinc-100">
-                      <td className="py-2">{m.displayLabel}</td>
-                      {data.roles!.map((r) => {
-                        const perm = m.permissions?.find((p) => p.roleId === r.id);
-                        const canEdit = perm?.canEdit ?? (m.purpose === "score" || m.purpose === "comments");
-                        return (
-                          <td key={r.id} className="px-2 py-2">
-                            <label className="flex items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={perm?.canView ?? true}
-                                onChange={(e) => {
-                                  const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
-                                  const perms = [...(m.permissions ?? [])];
-                                  const pi = perms.findIndex((p) => p.roleId === r.id);
-                                  if (pi >= 0) {
-                                    perms[pi] = { ...perms[pi], canView: e.target.checked };
-                                  } else {
-                                    perms.push({
-                                      roleId: r.id,
-                                      canView: e.target.checked,
-                                      canEdit: m.purpose === "score" || m.purpose === "comments",
-                                    });
-                                  }
-                                  updateMapping(idx, { permissions: perms });
-                                }}
-                              />
-                              <span className="text-xs">view</span>
-                            </label>
-                            {(m.purpose === "score" || m.purpose === "comments") && (
-                              <label className="mt-1 flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={canEdit}
-                                  onChange={(e) => {
-                                    const idx = mapped.findIndex((x) => x.fieldKey === m.fieldKey);
-                                    const perms = [...(m.permissions ?? ensurePermissions(m).permissions ?? [])];
-                                    const pi = perms.findIndex((p) => p.roleId === r.id);
-                                    if (pi >= 0) {
-                                      perms[pi] = { ...perms[pi], canEdit: e.target.checked };
-                                    } else {
-                                      perms.push({
-                                        roleId: r.id,
-                                        canView: true,
-                                        canEdit: e.target.checked,
-                                      });
-                                    }
-                                    updateMapping(idx, { permissions: perms });
-                                  }}
-                                />
-                                <span className="text-xs">edit</span>
-                              </label>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="mb-3 font-medium text-zinc-900">3. Layout template</h2>
+      <AccordionCard title="Layout">
         <p className="mb-3 text-sm text-zinc-600">
           How the reviewer form is organized. The preview below updates when you change this.
         </p>
@@ -1121,15 +1118,55 @@ export function FieldMappingBuilder({
             Reset to WSU defaults
           </button>
         </div>
-      </section>
+      </AccordionCard>
 
-      <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-        <h2 className="mb-2 font-medium text-zinc-900">4. Preview</h2>
+      {usesSections && (
+        <AccordionCard title="Tabs">
+          <p className="mb-3 text-sm text-zinc-600">
+            Define sections used for tabbed, stacked, and accordion layouts. Assign fields to sections using the Section column in the Columns table above.
+          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-zinc-700">Sections</span>
+            <button
+              type="button"
+              onClick={addSection}
+              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              + Add section
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sections.map((s, i) => (
+              <div key={s.section_key} className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-1">
+                <input
+                  type="text"
+                  value={s.label}
+                  onChange={(e) => updateSection(i, { label: e.target.value })}
+                  className="w-32 rounded border-0 bg-transparent px-1 py-0.5 text-sm focus:ring-1 focus:ring-zinc-400"
+                  placeholder="Section label"
+                />
+                {sections.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeSection(i)}
+                    className="text-xs text-red-600 hover:text-red-700"
+                    title="Remove section"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </AccordionCard>
+      )}
+
+      <AccordionCard title="Preview">
         <p className="mb-3 text-sm text-zinc-600">
           Preview updates when you change the layout template. Score dropdowns show options from the Smartsheet column.
         </p>
         <LayoutPreview mapped={mapped} viewType={viewType} columns={columns} sections={sections} colors={colors} />
-      </section>
+      </AccordionCard>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

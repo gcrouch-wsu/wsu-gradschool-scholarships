@@ -1,4 +1,4 @@
-# Field Mapping Builder — Review & Improvement Proposals (v4)
+# Field Mapping Builder — Review & Improvement Proposals (v5)
 
 **File reviewed:** `src/app/admin/scholarships/[id]/cycles/[cycleId]/builder/FieldMappingBuilder.tsx`
 **Related files:** `src/app/admin/scholarships/[id]/cycles/[cycleId]/builder/page.tsx`, `src/app/api/admin/cycles/[id]/builder/route.ts`, `src/app/api/admin/cycles/[id]/preview-config/route.ts`, `src/app/api/reviewer/cycles/[cycleId]/config/route.ts`, `src/app/reviewer/[cycleId]/nominees/[rowId]/ReviewerScoreForm.tsx`, `src/app/admin/scholarships/[id]/cycles/[cycleId]/preview/PreviewScoreForm.tsx`
@@ -452,6 +452,8 @@ Fields can now be pinned to a persistent header card that appears above the tab 
 
 | Change | Detail |
 |---|---|
+| **v5: useSections** | Stacked/accordion use sections from config; no hardcoded labels |
+| **v5: sections fallback** | `main` / "Review" when no viewSections |
 | `LayoutColors` interface + `DEFAULT_COLORS` | Matches builder defaults (accent `#A60F2D`, white bg/card) |
 | `colors` state | Loaded from config, merged with defaults |
 | `pinnedFieldKeys` state | Loaded from config |
@@ -464,6 +466,8 @@ Fields can now be pinned to a persistent header card that appears above the tab 
 
 | Change | Detail |
 |---|---|
+| **v5: useSections** | Stacked/accordion use sections from config; no hardcoded "Narrative & details" |
+| **v5: sections fallback** | `main` / "Review" when no viewSections |
 | `LayoutColors` interface + `DEFAULT_COLORS` | Same as `ReviewerScoreForm` |
 | `colors` state | Loaded from preview-config, merged with defaults |
 | `pinnedFieldKeys` state | Loaded from preview-config |
@@ -502,6 +506,16 @@ Fields can now be pinned to a persistent header card that appears above the tab 
 | `ColorSwatch` component | Native color input + hex field + WSU palette dropdown with click-outside |
 | Section 3 — Colors UI | Accent, header bg, header text, card bg; Reset to WSU defaults button |
 | Toolbar — Undo button | Disabled when `canUndo` is false |
+| **v5: Accordion cards** | All sections wrapped in `<AccordionCard>`; Map columns, Purpose & role visibility, Columns, Layout, Tabs, Preview |
+| **v5: Purpose reference** | Restored with editable label, desc, editable toggle per purpose |
+| **v5: purposeOverrides state** | Loaded from `settings_json.purposeOverrides`; saved in POST |
+| **v5: isPurposeEditable** | Uses `purposeOverrides[p].editable` ?? (score \|\| comments) |
+| **v5: Role visibility** | Moved into Purpose & role visibility card; filters by editable purposes |
+| **v5: Locked column** | New column in table; lock icon when column locked |
+| **v5: getPurposesForColumnType** | Fallback to TEXT_NUMBER when colType is "—" or missing |
+| **v5: LayoutPreview stacked/accordion** | Uses `tabList`/sections; no hardcoded labels |
+| **v5: Tabs card** | Shown for tabbed, stacked, accordion; renames to "Sections" |
+| **v5: Purpose badge** | Removed from field rows |
 
 ### `route.ts`
 
@@ -510,6 +524,61 @@ Fields can now be pinned to a persistent header card that appears above the tab 
 | `pinnedFieldKeys?: string[]` in body type | Added alongside existing `colors` |
 | `pinnedFieldKeys` destructured from body | — |
 | `settings_json` | Stores `{ colors, pinnedFieldKeys }` instead of hardcoded `'{}'` |
+| `purposeOverrides` in body type | `Record<string, { label?, desc?, editable? }>` |
+| `settings_json` (v5) | Now stores `{ colors, pinnedFieldKeys, purposeOverrides }` |
+| Sections for stacked/accordion | Sections saved when viewType is tabbed, stacked, or accordion |
+| Default `canEdit` | Uses `purposeOverrides[purpose].editable` when present |
+
+---
+
+## Implemented: Accordion Cards, Editable Purposes, Locked Column, Dynamic Sections (v5)
+
+### Accordion card structure
+
+All builder control areas are now collapsible accordion cards with bold titles (no numbers):
+
+1. **Map columns** — Column picker only (click to add unmapped columns)
+2. **Purpose & role visibility** — Editable purpose reference + role visibility table
+3. **Columns** — Table of mapped fields (Column, Type, Locked, Purpose, Display label, Section, Pin, Remove)
+4. **Layout** — Layout type (tabbed, stacked, accordion, list_detail) + colors
+5. **Tabs** — Section configuration (shown for tabbed, stacked, accordion)
+6. **Preview** — Layout preview
+
+### Editable purpose reference
+
+- Purpose reference panel restored with **editable** labels and descriptions per purpose
+- Admin can customize label (e.g. "Identity" → "Applicant Name") and description
+- **Editable toggle** per purpose — admin decides which purposes reviewers can edit (writes to Smartsheet)
+- Default: Score and Comments are editable; others read-only
+- Stored in `view_configs.settings_json.purposeOverrides` as `Record<string, { label?, desc?, editable? }>`
+- Role visibility table shows only fields whose purpose is marked editable
+
+### Purpose dropdown bug fix
+
+- When column type is missing or `"—"`, `getPurposesForColumnType` now treats as `TEXT_NUMBER` so admins can switch between identity, metadata, etc.
+
+### Locked column
+
+- Added **Locked** column in the Columns table
+- Shows lock icon (🔒) when Smartsheet column is locked; otherwise "—"
+
+### Sections for all layout types (no hardcoding)
+
+- Tabbed, stacked, and accordion use the **same** section configuration from the Tabs card
+- Layout type only changes presentation: tabs vs stacked cards vs accordion panels
+- Sections saved for tabbed, stacked, and accordion (not list_detail)
+- **PreviewScoreForm** and **ReviewerScoreForm** use sections for stacked and accordion (no hardcoded "Narrative & details" / "Scores & comments")
+
+### API changes
+
+- Builder POST accepts `purposeOverrides` in body
+- `settings_json` stores `{ colors, pinnedFieldKeys, purposeOverrides }`
+- Sections saved when viewType is tabbed, stacked, or accordion
+- Default `canEdit` for field permissions uses `purposeOverrides[purpose].editable` when present
+
+### Purpose badge removed
+
+- Colored purpose badge above the purpose dropdown in each field row was removed (per earlier request)
 
 ---
 
@@ -517,7 +586,6 @@ Fields can now be pinned to a persistent header card that appears above the tab 
 
 - **Score options in preview**: empty-state warning is shown; root fix requires re-importing the sheet schema so PICKLIST options are captured in `sheet_schema_snapshot_json`. A "Refresh schema" action on the cycle config page is the right place.
 - **Undo for tab/section changes**: not tracked; low priority since tab names are not easily mis-clicked.
-- **Stacked/accordion/list_detail layouts in reviewer form**: colors and pinned card are wired for the tabbed layout; non-tabbed branches in `ReviewerScoreForm` and `PreviewScoreForm` use hardcoded `bg-white` and no color tokens. Low priority until those layouts are actively used.
 
 ---
 

@@ -179,11 +179,9 @@ export function ReviewerScoreForm({
   const readOnlyFields = unpinnedFields.filter((f) => !f.canEdit);
   const sections = viewSections.length > 0
     ? viewSections
-    : [
-        { section_key: "narrative", label: "Narrative & details", sort_order: 0 },
-        { section_key: "scores", label: "Scores & comments", sort_order: 1 },
-      ];
+    : [{ section_key: "main", label: "Review", sort_order: 0 }];
   const useTabs = viewType === "tabbed" && sections.length > 0;
+  const useSections = ["tabbed", "stacked", "accordion"].includes(viewType) && sections.length > 0;
   const fieldsBySection = sections.reduce((acc, s) => {
     acc[s.section_key] = unpinnedFields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
     return acc;
@@ -302,17 +300,48 @@ export function ReviewerScoreForm({
             </div>
           </div>
         </div>
+      ) : useSections ? (
+        viewType === "accordion" ? (
+          <div className="space-y-2">
+            {sections.map((s) => {
+              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              return (
+                <details key={s.section_key} open className="rounded-lg border border-zinc-200 bg-white">
+                  <summary className="cursor-pointer px-4 py-3 font-medium text-zinc-900">
+                    {s.label}
+                  </summary>
+                  <div className="space-y-4 border-t border-zinc-200 px-4 pb-4 pt-3">
+                    {sectionFields.map((f) =>
+                      f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sections.map((s) => {
+              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              return (
+                <div key={s.section_key} className="rounded-lg border border-zinc-200 bg-white p-4">
+                  <h2 className="mb-3 font-medium text-zinc-900">{s.label}</h2>
+                  <div className="space-y-4">
+                    {sectionFields.map((f) =>
+                      f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : (
-        <>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="mb-3 font-medium text-zinc-900">Narrative & details</h2>
-            <div className="space-y-3">{readOnlyFields.map(renderReadOnlyField)}</div>
-          </div>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="mb-3 font-medium text-zinc-900">Your scores & comments</h2>
-            <div className="space-y-4">{editableFields.map(renderEditableField)}</div>
-          </div>
-        </>
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <div className="space-y-4">{unpinnedFields.map((f) =>
+            f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+          )}</div>
+        </div>
       )}
 
       {error && (

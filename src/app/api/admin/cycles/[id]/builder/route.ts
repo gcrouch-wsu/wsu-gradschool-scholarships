@@ -156,9 +156,11 @@ export async function POST(
     sections,
     colors,
     pinnedFieldKeys,
+    purposeOverrides,
   }: {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
+    purposeOverrides?: Record<string, { label?: string; desc?: string; editable?: boolean }>;
     fieldConfigs: Array<{
       fieldKey: string;
       sourceColumnId: number;
@@ -230,7 +232,10 @@ export async function POST(
         );
       }
     } else {
-      const canEdit = fc.purpose === "score" || fc.purpose === "comments";
+      const purposeEditable = purposeOverrides?.[fc.purpose]?.editable;
+      const canEdit = purposeEditable !== undefined
+        ? purposeEditable
+        : (fc.purpose === "score" || fc.purpose === "comments");
       for (const r of cycleRoles) {
         await tx(
           `INSERT INTO field_permissions (field_config_id, role_id, can_view, can_edit)
@@ -248,11 +253,16 @@ export async function POST(
       `INSERT INTO view_configs (cycle_id, view_type, name, settings_json)
        VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [cycleId, vt, "Review", JSON.stringify({ colors: colors ?? {}, pinnedFieldKeys: pinnedFieldKeys ?? [] })]
+      [cycleId, vt, "Review", JSON.stringify({
+        colors: colors ?? {},
+        pinnedFieldKeys: pinnedFieldKeys ?? [],
+        purposeOverrides: purposeOverrides ?? {},
+      })]
     );
     const viewConfigId = vcRows[0]?.id;
     if (viewConfigId) {
-      const sectionList = Array.isArray(sections) && sections.length > 0
+      const usesSections = ["tabbed", "stacked", "accordion"].includes(vt);
+      const sectionList = usesSections && Array.isArray(sections) && sections.length > 0
         ? sections
         : [{ section_key: "main", label: "Review", sort_order: 0 }];
       const sectionKeyToId: Record<string, string> = {};
