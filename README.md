@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Scholarship Review Platform
 
-## Getting Started
+Admin-managed application layer on top of Smartsheet for scholarship-style review workflows. Staff connect sheets, configure display/edit behavior, assign reviewers, and reviewers read/score/comment through a purpose-built interface.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Next.js** (App Router) + TypeScript
+- **Postgres** for app state, auth, config, assignments, audit
+- **Smartsheet** as source of truth for row data (server-side proxy only)
+- **Vercel** deployment target
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Clone and install:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. Configure environment (copy `.env.example` to `.env.local`):
 
-To learn more about Next.js, take a look at the following resources:
+   - `DATABASE_URL` – Postgres connection string
+   - `ENCRYPTION_KEY` – 32+ char key for encrypting Smartsheet tokens (e.g. `openssl rand -hex 32`)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Apply schema and seed initial admin:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ```bash
+   npm run db:seed
+   ```
 
-## Deploy on Vercel
+   Requires `SEED_ADMIN_PASSWORD` (min 8 chars). Optional: `SEED_ADMIN_EMAIL` (default: `admin@example.com`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+4. Run dev server:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   ```bash
+   npm run dev
+   ```
+
+5. Log in at `/login` with the seeded admin account.
+
+## Project structure
+
+- `src/app/` – Next.js App Router pages and API routes
+- `src/lib/` – DB, auth, encryption, Smartsheet proxy
+- `supabase/migrations/` – Postgres schema
+- `scripts/` – Seed and utility scripts
+
+## Build phases (from handoff)
+
+- **Phase 0–1** (implemented): Auth, programs/cycles, users, assignments, connections, schema import, reviewer landing
+- **Phase 2** (implemented): Smartsheet connection, schema sync
+- **Phase 3** (implemented): Guided field-mapping builder
+- **Phase 4** (implemented): Reviewer runtime (nominee list, scoring, Smartsheet writeback)
+- **Phase 5** (implemented): Production hardening (audit logging, connection verification/rotation, schema drift warnings, smoke tests)
+- **Phase 6** (implemented): Template and reuse (clone config from prior cycle, versioned config publishing)
+
+## What was built (Phase 0 + Phase 1)
+
+- **Auth**: Login, logout, DB-backed sessions, `must_change_password` flow, change-password page (redirects to /admin or /reviewer by role)
+- **Admin boundary**: Only platform admins can access /admin; reviewers redirect to /reviewer
+- **Admin**: Dashboard, Scholarships (programs + cycles), Users (create, reset password, activate/deactivate), Connections (encrypted Smartsheet tokens)
+- **Cycle config**: Link connection + sheet ID, import schema from Smartsheet, allow_external_reviewers toggle
+- **Assignments**: Assign users to cycles with roles, remove assignments
+- **Session**: Cookie maxAge from app_config, session warning banner before expiry
+- **Reviewer**: "My scholarships" page listing assigned active cycles (runtime stub for Phase 4)
+- **Phase 3 Builder**: Field mapping (identity, narrative, score, comments), role visibility, layout selection (tabbed/stacked/accordion/list_detail), preview stub
+- **Scholarship admin**: program_admins table; scholarship admins manage cycles, builder, assignments for their programs; connections remain platform-admin only
+- **Phase 4 Reviewer**: Nominee list, detail view with narrative/score/comments, Smartsheet writeback, save-state handling (idle/saving/saved/failed, retriable vs fatal)
+- **Phase 5**: Audit logging (user/program/connection/cycle/assignment/reviewer actions), connection test+rotate, schema drift warnings, vitest smoke tests
+- **Phase 6**: Clone config from prior cycle (same program), config versioning on builder save, publish config
+- **Post–Phase 6**: Audit/Activity UI (`/admin/audit`), timeout settings UI (`/admin/settings`), Save & Next, resume where left off, row loaded timestamp and refresh, read-only Smartsheet attachments, builder attachment purpose, config export/import, reusable scholarship templates
+
+## Deferred
+
+- **Middleware → proxy migration**: Next.js deprecation warning; migrate when ready.
+
+## Security
+
+- Smartsheet tokens are server-side only, encrypted in DB
+- Session cookies are httpOnly and secure
+- `.gitignore` excludes `.env`, `token.txt`, local DB files
+- No plaintext secrets in tracked files
