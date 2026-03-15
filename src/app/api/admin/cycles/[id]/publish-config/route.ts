@@ -5,8 +5,8 @@ import { logAudit } from "@/lib/audit";
 import { query, withTransaction } from "@/lib/db";
 
 /**
- * Publish the latest config version for a cycle.
- * Sets published_config_version_id to the most recent config_version.
+ * Publish the latest config for a cycle.
+ * Sets published_config_version_id to the most recent config snapshot.
  */
 export async function POST(
   _request: NextRequest,
@@ -23,14 +23,14 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { rows: versions } = await query<{ id: string; version_number: number }>(
-    "SELECT id, version_number FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
+  const { rows: latestConfig } = await query<{ id: string }>(
+    "SELECT id FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
     [cycleId]
   );
-  const latest = versions[0];
+  const latest = latestConfig[0];
   if (!latest) {
     return NextResponse.json(
-      { error: "No config versions to publish. Save field mapping first." },
+      { error: "No config to publish. Save field mapping first." },
       { status: 400 }
     );
   }
@@ -54,14 +54,10 @@ export async function POST(
     actorUserId: user.id,
     cycleId,
     actionType: "cycle.config_published",
-    targetType: "config_version",
+    targetType: "config",
     targetId: latest.id,
-    metadata: { versionNumber: latest.version_number },
+    metadata: {},
   });
 
-  return NextResponse.json({
-    success: true,
-    configVersionId: latest.id,
-    versionNumber: latest.version_number,
-  });
+  return NextResponse.json({ success: true });
 }

@@ -112,8 +112,8 @@ export default async function CycleDetailPage({
     [cycleId]
   );
 
-  const { rows: configVersions } = await query<{ id: string; version_number: number }>(
-    "SELECT id, version_number FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
+  const { rows: latestConfig } = await query<{ id: string }>(
+    "SELECT id FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
     [cycleId]
   );
   const { rows: cycleWithPublished } = await query<{ published_config_version_id: string | null }>(
@@ -171,7 +171,7 @@ export default async function CycleDetailPage({
             Fields & layout (what reviewers see)
           </h2>
           <p className="mt-1 text-sm text-zinc-600">
-            Map Smartsheet columns to fields, set labels, visibility, and edit permissions per role. Drag to reorder. Changes are saved as new versions; publish to make them live for reviewers.
+            Map Smartsheet columns to fields, set labels, visibility, and edit permissions per role. Drag to reorder. Save your changes, then publish to make them live for reviewers.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
@@ -189,8 +189,8 @@ export default async function CycleDetailPage({
             </Link>
             <PublishConfigButton
               cycleId={cycleId}
-              latestVersion={configVersions[0] ?? null}
-              publishedVersionId={cycleWithPublished[0]?.published_config_version_id ?? null}
+              latestConfigId={latestConfig[0]?.id ?? null}
+              publishedConfigId={cycleWithPublished[0]?.published_config_version_id ?? null}
             />
           </div>
         </section>

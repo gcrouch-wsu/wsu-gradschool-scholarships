@@ -154,7 +154,11 @@ export async function POST(
     fieldConfigs,
     viewType,
     sections,
+    colors,
+    pinnedFieldKeys,
   }: {
+    colors?: Record<string, string>;
+    pinnedFieldKeys?: string[];
     fieldConfigs: Array<{
       fieldKey: string;
       sourceColumnId: number;
@@ -242,9 +246,9 @@ export async function POST(
   if (["tabbed", "stacked", "accordion", "list_detail"].includes(vt)) {
     const { rows: vcRows } = await tx<{ id: string }>(
       `INSERT INTO view_configs (cycle_id, view_type, name, settings_json)
-       VALUES ($1, $2, $3, '{}')
+       VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [cycleId, vt, "Review"]
+      [cycleId, vt, "Review", JSON.stringify({ colors: colors ?? {}, pinnedFieldKeys: pinnedFieldKeys ?? [] })]
     );
     const viewConfigId = vcRows[0]?.id;
     if (viewConfigId) {
@@ -392,9 +396,5 @@ export async function POST(
     },
   });
 
-  return NextResponse.json({
-    success: true,
-    configVersionId: result.configVersionId,
-    versionNumber: result.versionNumber,
-  });
+  return NextResponse.json({ success: true });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -88,6 +88,36 @@ const LAYOUTS = [
   { value: "list_detail", label: "List and detail" },
 ];
 
+/** WSU brand palette — mirrors wsu-gradschool-tools newsletter editor */
+const WSU_COLORS = [
+  { name: "Crimson", value: "#A60F2D" },
+  { name: "Dark Crimson", value: "#8c0d25" },
+  { name: "Gray", value: "#4D4D4D" },
+  { name: "Light Gray", value: "#5E6A71" },
+  { name: "Text Dark", value: "#2A3033" },
+  { name: "Text Body", value: "#333333" },
+  { name: "Muted", value: "#cccccc" },
+  { name: "Bg Light", value: "#f4f4f4" },
+  { name: "Bg Card", value: "#f9f9f9" },
+  { name: "White", value: "#ffffff" },
+  { name: "Black", value: "#000000" },
+  { name: "Border", value: "#e0e0e0" },
+];
+
+interface LayoutColors {
+  accent: string;     // active tab indicator, focus rings, primary button
+  headerBg: string;   // identity/header card background
+  headerText: string; // identity/header card text
+  cardBg: string;     // content card background
+}
+
+const DEFAULT_COLORS: LayoutColors = {
+  accent: "#A60F2D",    // WSU Crimson
+  headerBg: "#ffffff",
+  headerText: "#171717",
+  cardBg: "#ffffff",
+};
+
 interface Column {
   id: number;
   index: number;
@@ -123,6 +153,7 @@ interface MappedField {
   sortOrder: number;
   fieldKey: string;
   sectionKey?: string;
+  pinned?: boolean;
   permissions?: Array<{ roleId: string; canView: boolean; canEdit: boolean }>;
 }
 
@@ -139,11 +170,13 @@ function LayoutPreview({
   viewType,
   columns,
   sections,
+  colors,
 }: {
   mapped: MappedField[];
   viewType: string;
   columns: Column[];
   sections: ViewSection[];
+  colors: LayoutColors;
 }) {
   const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
   const tabList = sections.length > 0
@@ -163,40 +196,89 @@ function LayoutPreview({
     return <p className="text-sm text-zinc-500">No fields mapped yet.</p>;
   }
 
+  const pinnedFields = mapped.filter((m) => m.pinned);
+  const unpinned = mapped.filter((m) => !m.pinned);
+
   const fieldsBySection = tabList.reduce((acc, s) => {
-    acc[s.section_key] = mapped.filter((m) => (m.sectionKey || tabList[0]?.section_key) === s.section_key);
+    acc[s.section_key] = unpinned.filter((m) => (m.sectionKey || tabList[0]?.section_key) === s.section_key);
     return acc;
   }, {} as Record<string, MappedField[]>);
-  const readOnlyFields = mapped.filter((m) => m.purpose !== "score" && m.purpose !== "comments");
-  const editableFields = mapped.filter((m) => m.purpose === "score" || m.purpose === "comments");
+  const readOnlyFields = unpinned.filter((m) => m.purpose !== "score" && m.purpose !== "comments");
+  const editableFields = unpinned.filter((m) => m.purpose === "score" || m.purpose === "comments");
+
+  const PinnedCard = pinnedFields.length > 0 ? (
+    <div
+      className="mb-3 rounded-lg border border-zinc-200 px-4 py-3"
+      style={{ backgroundColor: colors.headerBg }}
+    >
+      <div className="flex flex-wrap gap-x-8 gap-y-1.5">
+        {pinnedFields.map((m) => (
+          <div key={m.fieldKey}>
+            <span className="block text-[10px] uppercase tracking-wide text-zinc-400">{m.displayLabel}</span>
+            <span className="text-sm font-semibold" style={{ color: colors.headerText }}>
+              Sample {m.sourceColumnTitle}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   function renderField(m: MappedField) {
     const options = getOptionsForField(m);
     return (
-      <div key={m.fieldKey} className="border-b border-zinc-100 pb-2 last:border-0">
-        <span className="text-xs text-zinc-500 uppercase">{m.purpose}</span>
-        <div className="font-medium">{m.displayLabel}</div>
+      <div key={m.fieldKey} className="border-b border-zinc-100 pb-3 last:border-0">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{m.displayLabel}</span>
+        {m.purpose === "identity" && (
+          <div className="mt-0.5 text-xl font-semibold" style={{ color: colors.headerText }}>
+            Sample Applicant Name
+          </div>
+        )}
+        {m.purpose === "subtitle" && (
+          <div className="mt-0.5 text-sm text-zinc-600">Sample subtitle value</div>
+        )}
+        {m.purpose === "narrative" && (
+          <div className="mt-1 space-y-1 text-sm text-zinc-700">
+            <p>This is where the applicant&apos;s narrative or essay response will appear.</p>
+            <p className="text-zinc-400">Reviewers see the full text here in read-only format.</p>
+          </div>
+        )}
+        {m.purpose === "metadata" && (
+          <div className="mt-0.5 text-sm text-zinc-600">— sample value —</div>
+        )}
         {m.purpose === "score" && (
-          <select
-            value={previewValues[m.fieldKey] ?? ""}
-            onChange={(e) => setPreviewValues((prev) => ({ ...prev, [m.fieldKey]: e.target.value }))}
-            className="mt-1 rounded border border-zinc-300 px-2 py-1 text-sm"
-          >
-            <option value="">— Select —</option>
-            {options.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+          <div>
+            <select
+              value={previewValues[m.fieldKey] ?? ""}
+              onChange={(e) => setPreviewValues((prev) => ({ ...prev, [m.fieldKey]: e.target.value }))}
+              className="mt-1 rounded border border-zinc-300 px-2 py-1 text-sm"
+              style={{ accentColor: colors.accent }}
+            >
+              <option value="">— Select —</option>
+              {options.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            {options.length === 0 && (
+              <p className="mt-1 text-[11px] text-amber-600">
+                No options found. Re-import the sheet schema if this PICKLIST column has options in Smartsheet.
+              </p>
+            )}
+          </div>
         )}
         {m.purpose === "comments" && (
           <textarea
             readOnly
-            placeholder="Comments..."
-            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+            placeholder="Reviewer comments will appear here..."
+            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-400"
             rows={2}
           />
+        )}
+        {m.purpose === "attachment" && (
+          <div className="mt-1 flex items-center gap-1.5 text-sm text-zinc-500">
+            <span>📎</span>
+            <span>attachment-sample.pdf</span>
+          </div>
         )}
       </div>
     );
@@ -205,36 +287,43 @@ function LayoutPreview({
   if (viewType === "tabbed") {
     const activeFields = fieldsBySection[activeTab] ?? [];
     return (
-      <div className="rounded border border-zinc-200 bg-white">
+      <div>
+      {PinnedCard}
+      <div className="rounded border border-zinc-200" style={{ backgroundColor: colors.cardBg }}>
         <div className="flex border-b border-zinc-200">
-          {tabList.map((s) => (
-            <button
-              key={s.section_key}
-              type="button"
-              onClick={() => setActiveTab(s.section_key)}
-              className={`rounded-t px-4 py-2 text-sm font-medium ${
-                activeTab === s.section_key
-                  ? "border-b-2 border-zinc-900 bg-white text-zinc-900 -mb-px"
-                  : "bg-zinc-50 text-zinc-500 hover:text-zinc-700"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
+          {tabList.map((s) => {
+            const isActive = activeTab === s.section_key;
+            return (
+              <button
+                key={s.section_key}
+                type="button"
+                onClick={() => setActiveTab(s.section_key)}
+                className={`-mb-px rounded-t px-4 py-2 text-sm font-medium ${
+                  isActive ? "text-zinc-900" : "bg-zinc-50 text-zinc-500 hover:text-zinc-700"
+                }`}
+                style={isActive ? { borderBottom: `2px solid ${colors.accent}`, backgroundColor: colors.cardBg } : {}}
+              >
+                {s.label}
+              </button>
+            );
+          })}
         </div>
         <div className="p-4">
           {activeFields.length > 0 ? (
-            <div className="space-y-2">{activeFields.map(renderField)}</div>
+            <div className="space-y-3">{activeFields.map(renderField)}</div>
           ) : (
             <p className="text-sm text-zinc-500">No fields in this tab</p>
           )}
         </div>
+      </div>
       </div>
     );
   }
 
   if (viewType === "accordion") {
     return (
+      <div>
+      {PinnedCard}
       <div className="space-y-2">
         <details open className="rounded border border-zinc-200 bg-white">
           <summary className="cursor-pointer px-4 py-2 font-medium text-zinc-900">
@@ -255,19 +344,23 @@ function LayoutPreview({
           </details>
         )}
       </div>
+      </div>
     );
   }
 
   if (viewType === "list_detail") {
     return (
+      <div>
+      {PinnedCard}
       <div className="flex gap-4">
         <div className="w-48 shrink-0 rounded border border-zinc-200 bg-zinc-50 p-2">
           <div className="text-xs font-medium uppercase text-zinc-500">Nominees</div>
           <div className="mt-2 text-sm text-zinc-600">Sample nominee</div>
         </div>
         <div className="min-w-0 flex-1 space-y-2 rounded border border-zinc-200 bg-white p-4">
-          {mapped.map(renderField)}
+          {unpinned.map(renderField)}
         </div>
+      </div>
       </div>
     );
   }
@@ -275,18 +368,99 @@ function LayoutPreview({
   // stacked (default)
   return (
     <div className="space-y-4">
+      {PinnedCard}
       {readOnlyFields.length > 0 && (
-        <div className="rounded border border-zinc-200 bg-white p-4">
-          <div className="mb-2 text-sm font-medium text-zinc-900">Narrative & details</div>
-          <div className="space-y-2">{readOnlyFields.map(renderField)}</div>
+        <div className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
+          <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>Narrative & details</div>
+          <div className="space-y-3">{readOnlyFields.map(renderField)}</div>
         </div>
       )}
       {editableFields.length > 0 && (
-        <div className="rounded border border-zinc-200 bg-white p-4">
-          <div className="mb-2 text-sm font-medium text-zinc-900">Scores & comments</div>
-          <div className="space-y-2">{editableFields.map(renderField)}</div>
+        <div className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
+          <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>Scores & comments</div>
+          <div className="space-y-3">{editableFields.map(renderField)}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Inline color picker: native color input + hex text field + WSU palette dropdown */
+function ColorSwatch({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-32 shrink-0 text-xs text-zinc-600">{label}</span>
+      <div className="relative flex items-center gap-1.5" ref={ref}>
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-7 w-10 cursor-pointer rounded border border-zinc-300"
+          title="Pick a color"
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v);
+          }}
+          className="w-20 rounded border border-zinc-300 px-1.5 py-1 text-xs font-mono"
+          placeholder="#000000"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((p) => !p)}
+          className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+          title="WSU color palette"
+        >
+          WSU ▾
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full z-20 mt-1 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              WSU Palette
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {WSU_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  title={`${c.name} (${c.value})`}
+                  onClick={() => { onChange(c.value); setOpen(false); }}
+                  className="flex flex-col items-center gap-0.5 rounded p-1 hover:bg-zinc-50"
+                >
+                  <span
+                    className="block h-6 w-6 rounded border border-zinc-200 shadow-sm"
+                    style={{ backgroundColor: c.value }}
+                  />
+                  <span className="text-[9px] leading-tight text-zinc-500 text-center">{c.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -303,24 +477,44 @@ export function FieldMappingBuilder({
     columns: Column[];
     fieldConfigs: FieldConfig[];
     roles: Role[];
-    viewConfigs: { view_type: string }[];
+    viewConfigs: { view_type: string; settings_json?: { colors?: LayoutColors; pinnedFieldKeys?: string[] } | null }[];
     viewSections?: ViewSection[];
     sectionFields?: Array<{ view_section_id: string; field_config_id: string; sort_order: number }>;
   } | null>(null);
   const [mapped, setMapped] = useState<MappedField[]>([]);
   const [sections, setSections] = useState<ViewSection[]>([]);
   const [viewType, setViewType] = useState("tabbed");
+  const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const historyRef = useRef<MappedField[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+
+  function pushHistory(current: MappedField[]) {
+    historyRef.current = [...historyRef.current.slice(-19), [...current]];
+    setCanUndo(true);
+  }
+
+  function undo() {
+    const prev = historyRef.current.pop();
+    if (prev) {
+      setMapped(prev);
+      setCanUndo(historyRef.current.length > 0);
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/admin/cycles/${cycleId}/builder`)
       .then((r) => r.json())
       .then((d) => {
         setData(d);
+        let pinnedFieldKeys: string[] = [];
         if (d.viewConfigs?.[0]) {
           setViewType(d.viewConfigs[0].view_type);
+          const settings = d.viewConfigs[0].settings_json;
+          if (settings?.colors) setColors({ ...DEFAULT_COLORS, ...settings.colors });
+          pinnedFieldKeys = settings?.pinnedFieldKeys ?? [];
         }
         if (d.viewSections?.length > 0) {
           setSections(
@@ -370,6 +564,7 @@ export function FieldMappingBuilder({
               sortOrder: fc.sort_order,
               fieldKey: fc.field_key,
               sectionKey: sectionByFieldId[fc.id],
+              pinned: pinnedFieldKeys.includes(fc.field_key),
               permissions: permsByField[fc.id],
             }))
           );
@@ -384,6 +579,7 @@ export function FieldMappingBuilder({
   function addColumn(col: Column) {
     const key = `col_${col.id}`;
     if (mapped.some((m) => m.sourceColumnId === col.id)) return;
+    pushHistory(mapped);
     const isAttachment = col.id === 0;
     const colType = isAttachment ? "attachment_list" : col.type;
     const purposes = getPurposesForColumnType(colType);
@@ -442,10 +638,12 @@ export function FieldMappingBuilder({
   }
 
   function removeMapping(idx: number) {
+    pushHistory(mapped);
     setMapped((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function updateMapping(idx: number, updates: Partial<MappedField>) {
+    pushHistory(mapped);
     setMapped((prev) =>
       prev.map((m, i) => (i === idx ? { ...m, ...updates } : m))
     );
@@ -473,6 +671,8 @@ export function FieldMappingBuilder({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          colors,
+          pinnedFieldKeys: mapped.filter((m) => m.pinned).map((m) => m.fieldKey),
           fieldConfigs: mapped.map((m, i) => {
             const ensured = ensurePermissions(m);
             return {
@@ -520,7 +720,7 @@ export function FieldMappingBuilder({
       <section className="rounded-lg border border-zinc-200 bg-white p-4">
         <h2 className="mb-3 font-medium text-zinc-900">1. Map columns to purpose</h2>
         <p className="mb-4 text-sm text-zinc-600">
-          Add columns and assign each a purpose. Column type (e.g. TEXT_NUMBER, PICKLIST) comes from Smartsheet — we use the actual API types. Purpose is how we use it in the reviewer UI; the dropdown shows only purposes valid for that column type. Locked columns cannot be edited — avoid Score or Comments.
+          Purpose controls how a field appears to reviewers. <strong>Score</strong> and <strong>Comments</strong> are the only editable purposes — reviewers fill them in and the values write back to Smartsheet. Everything else is read-only. Available purposes are filtered by each column&apos;s Smartsheet type.
         </p>
 
         <div className="mb-4">
@@ -553,8 +753,13 @@ export function FieldMappingBuilder({
         </div>
 
         <div className="mb-4 rounded-lg border border-zinc-100 bg-zinc-50 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Purpose reference
+          <div className="mb-2 flex items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Purpose</span>
+            <span className="text-[11px] text-zinc-400">
+              <span className="rounded bg-blue-50 px-1 text-blue-600">Blue = read-only</span>
+              {" · "}
+              <span className="rounded bg-amber-50 px-1 text-amber-700">Amber = reviewer can edit</span>
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-4">
             {PURPOSES.map((p) => (
@@ -566,10 +771,6 @@ export function FieldMappingBuilder({
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-400">
-            Available purposes are filtered by each column&apos;s Smartsheet type.
-            Hover any purpose dropdown to see why options may be limited.
-          </p>
         </div>
 
         <p className="mb-2 text-xs text-zinc-500">
@@ -580,8 +781,8 @@ export function FieldMappingBuilder({
             className="grid gap-3 rounded border-b border-zinc-200 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-500"
             style={{
               gridTemplateColumns: viewType === "tabbed"
-                ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) auto"
-                : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) auto",
+                ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) 60px auto"
+                : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) 60px auto",
             }}
           >
             <span className="w-5" aria-hidden />
@@ -590,6 +791,7 @@ export function FieldMappingBuilder({
             <span>Purpose</span>
             <span>Display label</span>
             {viewType === "tabbed" && <span>Tab</span>}
+            <span>Header</span>
             <span />
           </div>
           {mapped.map((m, idx) => {
@@ -599,8 +801,8 @@ export function FieldMappingBuilder({
             const isEditablePurpose = m.purpose === "score" || m.purpose === "comments";
             const lockedConflict = colLocked && isEditablePurpose;
             const gridCols = viewType === "tabbed"
-              ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) auto"
-              : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) auto";
+              ? "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) minmax(100px,1fr) 60px auto"
+              : "20px minmax(120px,1fr) minmax(70px,1fr) minmax(100px,1fr) minmax(120px,1.5fr) 60px auto";
             return (
               <div
                 key={m.fieldKey}
@@ -690,18 +892,31 @@ export function FieldMappingBuilder({
                   className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
                 />
                 {viewType === "tabbed" && (
-                  <select
-                    value={m.sectionKey ?? sections[0]?.section_key ?? ""}
-                    onChange={(e) => updateMapping(idx, { sectionKey: e.target.value })}
-                    className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
-                  >
-                    {sections.map((s) => (
-                      <option key={s.section_key} value={s.section_key}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                  m.pinned ? (
+                    <span className="text-xs text-zinc-400 italic">—</span>
+                  ) : (
+                    <select
+                      value={m.sectionKey ?? sections[0]?.section_key ?? ""}
+                      onChange={(e) => updateMapping(idx, { sectionKey: e.target.value })}
+                      className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                    >
+                      {sections.map((s) => (
+                        <option key={s.section_key} value={s.section_key}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  )
                 )}
+                <label className="flex cursor-pointer items-center gap-1" title="Pin to header card — always visible above tabs">
+                  <input
+                    type="checkbox"
+                    checked={m.pinned ?? false}
+                    onChange={(e) => updateMapping(idx, { pinned: e.target.checked })}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-xs text-zinc-500">Pin</span>
+                </label>
                 <button
                   type="button"
                   onClick={() => removeMapping(idx)}
@@ -870,6 +1085,42 @@ export function FieldMappingBuilder({
             </label>
           ))}
         </div>
+
+        <div className="mt-5 border-t border-zinc-100 pt-4">
+          <h3 className="mb-1 text-sm font-medium text-zinc-700">Colors</h3>
+          <p className="mb-3 text-xs text-zinc-500">
+            Customize reviewer UI colors. Defaults are WSU brand colors.
+          </p>
+          <div className="space-y-2.5">
+            <ColorSwatch
+              label="Accent"
+              value={colors.accent}
+              onChange={(v) => setColors((c) => ({ ...c, accent: v }))}
+            />
+            <ColorSwatch
+              label="Header background"
+              value={colors.headerBg}
+              onChange={(v) => setColors((c) => ({ ...c, headerBg: v }))}
+            />
+            <ColorSwatch
+              label="Header text"
+              value={colors.headerText}
+              onChange={(v) => setColors((c) => ({ ...c, headerText: v }))}
+            />
+            <ColorSwatch
+              label="Card background"
+              value={colors.cardBg}
+              onChange={(v) => setColors((c) => ({ ...c, cardBg: v }))}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setColors(DEFAULT_COLORS)}
+            className="mt-2 text-xs text-zinc-400 hover:text-zinc-600 hover:underline"
+          >
+            Reset to WSU defaults
+          </button>
+        </div>
       </section>
 
       <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
@@ -877,7 +1128,7 @@ export function FieldMappingBuilder({
         <p className="mb-3 text-sm text-zinc-600">
           Preview updates when you change the layout template. Score dropdowns show options from the Smartsheet column.
         </p>
-        <LayoutPreview mapped={mapped} viewType={viewType} columns={columns} sections={sections} />
+        <LayoutPreview mapped={mapped} viewType={viewType} columns={columns} sections={sections} colors={colors} />
       </section>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -890,6 +1141,14 @@ export function FieldMappingBuilder({
           className="rounded bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save configuration"}
+        </button>
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!canUndo}
+          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+        >
+          Undo
         </button>
         <Link
           href={`/admin/scholarships/${programId}/cycles/${cycleId}`}

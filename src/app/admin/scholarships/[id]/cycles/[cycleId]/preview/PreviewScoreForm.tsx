@@ -3,6 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+interface LayoutColors {
+  accent: string;
+  headerBg: string;
+  headerText: string;
+  cardBg: string;
+}
+const DEFAULT_COLORS: LayoutColors = {
+  accent: "#A60F2D",
+  headerBg: "#ffffff",
+  headerText: "#171717",
+  cardBg: "#ffffff",
+};
+
 interface Field {
   fieldKey: string;
   sourceColumnId: number;
@@ -40,6 +53,8 @@ export function PreviewScoreForm({
   const [viewType, setViewType] = useState<string>("tabbed");
   const [viewSections, setViewSections] = useState<ViewSection[]>([]);
   const [activeTab, setActiveTab] = useState<string>("main");
+  const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
+  const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
 
   const loadRow = useCallback(async () => {
     const base = `/api/admin/cycles/${cycleId}`;
@@ -78,6 +93,8 @@ export function PreviewScoreForm({
       setViewType(vType);
       setViewSections(vSections);
       if (vSections.length > 0) setActiveTab(vSections[0].section_key);
+      setColors({ ...DEFAULT_COLORS, ...(configData.colors ?? {}) });
+      setPinnedFieldKeys(configData.pinnedFieldKeys ?? []);
       const initial: Record<number, unknown> = {};
       for (const f of fieldsData) {
         initial[f.sourceColumnId] = f.value;
@@ -108,8 +125,10 @@ export function PreviewScoreForm({
     );
   }
 
-  const editableFields = fields.filter((f) => f.canEdit);
-  const readOnlyFields = fields.filter((f) => !f.canEdit);
+  const pinnedFields = fields.filter((f) => pinnedFieldKeys.includes(f.fieldKey));
+  const unpinnedFields = fields.filter((f) => !pinnedFieldKeys.includes(f.fieldKey));
+  const editableFields = unpinnedFields.filter((f) => f.canEdit);
+  const readOnlyFields = unpinnedFields.filter((f) => !f.canEdit);
   const sections = viewSections.length > 0
     ? viewSections
     : [
@@ -118,7 +137,7 @@ export function PreviewScoreForm({
       ];
   const useTabs = viewType === "tabbed" && sections.length > 0;
   const fieldsBySection = sections.reduce((acc, s) => {
-    acc[s.section_key] = fields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
+    acc[s.section_key] = unpinnedFields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
     return acc;
   }, {} as Record<string, Field[]>);
 
@@ -179,28 +198,52 @@ export function PreviewScoreForm({
         </div>
       )}
 
-      {useTabs ? (
-        <div className="rounded-lg border border-zinc-200 bg-white">
-          <div className="flex border-b border-zinc-200">
-            {sections.map((s) => (
-              <button
-                key={s.section_key}
-                type="button"
-                onClick={() => setActiveTab(s.section_key)}
-                className={`rounded-t px-4 py-2 text-sm font-medium ${
-                  activeTab === s.section_key
-                    ? "border-b-2 border-zinc-900 bg-white text-zinc-900 -mb-px"
-                    : "bg-zinc-50 text-zinc-500 hover:text-zinc-700"
-                }`}
-              >
-                {s.label}
-              </button>
+      {pinnedFields.length > 0 && (
+        <div
+          className="rounded-lg border border-zinc-200 px-4 py-3"
+          style={{ backgroundColor: colors.headerBg }}
+        >
+          <div className="flex flex-wrap gap-x-8 gap-y-1.5">
+            {pinnedFields.map((f) => (
+              <div key={f.fieldKey}>
+                <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                  {f.displayLabel}
+                </div>
+                <div className="text-sm font-semibold" style={{ color: colors.headerText }}>
+                  {String(edits[f.sourceColumnId] ?? f.value ?? "—")}
+                </div>
+              </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {useTabs ? (
+        <div className="rounded-lg border border-zinc-200" style={{ backgroundColor: colors.cardBg }}>
+          <div className="flex border-b border-zinc-200">
+            {sections.map((s) => {
+              const isActive = activeTab === s.section_key;
+              return (
+                <button
+                  key={s.section_key}
+                  type="button"
+                  onClick={() => setActiveTab(s.section_key)}
+                  className={`-mb-px rounded-t px-4 py-2 text-sm font-medium ${
+                    isActive ? "text-zinc-900" : "bg-zinc-50 text-zinc-500 hover:text-zinc-700"
+                  }`}
+                  style={isActive ? { borderBottom: `2px solid ${colors.accent}`, backgroundColor: colors.cardBg } : {}}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
           <div className="p-4">
-            {(fieldsBySection[activeTab] ?? []).map((f) =>
-              f.canEdit ? renderEditableField(f) : renderFieldContent(f)
-            )}
+            <div className="space-y-4">
+              {(fieldsBySection[activeTab] ?? []).map((f) =>
+                f.canEdit ? renderEditableField(f) : renderFieldContent(f)
+              )}
+            </div>
           </div>
         </div>
       ) : (

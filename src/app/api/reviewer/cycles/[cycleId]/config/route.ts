@@ -57,8 +57,8 @@ export async function GET(
     [cycleId, membership[0]!.role_id]
   );
 
-  const { rows: viewConfigs } = await query<{ view_type: string }>(
-    "SELECT view_type FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+  const { rows: viewConfigs } = await query<{ view_type: string; settings_json: unknown }>(
+    "SELECT view_type, settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
     [cycleId]
   );
   const { rows: viewSections } = await query<{
@@ -137,6 +137,11 @@ export async function GET(
     (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
   );
 
+  const viewSettings = viewConfigs[0]?.settings_json as {
+    colors?: Record<string, string>;
+    pinnedFieldKeys?: string[];
+  } | null;
+
   return NextResponse.json({
     fieldConfigs: validFields,
     editableColumnIds: validEditableIds,
@@ -148,5 +153,7 @@ export async function GET(
       label: s.label,
       sort_order: s.sort_order,
     })),
+    colors: viewSettings?.colors ?? {},
+    pinnedFieldKeys: viewSettings?.pinnedFieldKeys ?? [],
   });
 }

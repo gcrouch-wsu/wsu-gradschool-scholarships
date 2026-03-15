@@ -5,20 +5,20 @@ import { useRouter } from "next/navigation";
 
 export function PublishConfigButton({
   cycleId,
-  latestVersion,
-  publishedVersionId,
+  latestConfigId,
+  publishedConfigId,
 }: {
   cycleId: string;
-  latestVersion: { id: string; version_number: number } | null;
-  publishedVersionId: string | null;
+  latestConfigId: string | null;
+  publishedConfigId: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  if (!latestVersion) return null;
+  if (!latestConfigId) return null;
 
-  const isPublished = publishedVersionId === latestVersion.id;
+  const isPublished = publishedConfigId === latestConfigId;
 
   async function handlePublish() {
     setError("");
@@ -41,11 +41,9 @@ export function PublishConfigButton({
   }
 
   return (
-    <div className="flex items-center gap-2" title="Each save creates a new version. Publish makes this version live for reviewers.">
+    <div className="flex items-center gap-2" title="Publish makes this config live for reviewers.">
       {isPublished ? (
-        <span className="text-sm text-green-600">
-          Published (v{latestVersion.version_number})
-        </span>
+        <span className="text-sm text-green-600">Published</span>
       ) : (
         <>
           <button
@@ -53,9 +51,9 @@ export function PublishConfigButton({
             onClick={handlePublish}
             disabled={loading}
             className="rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-50 disabled:opacity-50"
-            title="Each save creates a new version. Publish makes this version live for reviewers."
+            title="Publish makes this config live for reviewers."
           >
-            {loading ? "Publishing…" : `Publish latest (v${latestVersion.version_number})`}
+            {loading ? "Publishing…" : "Publish"}
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </>
