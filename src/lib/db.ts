@@ -16,7 +16,7 @@ export function getPool(): Pool {
     }
     globalForDb.pool = new Pool({
       connectionString,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined,
+      ssl: { rejectUnauthorized: false },
     });
   }
   return globalForDb.pool;

@@ -6,6 +6,7 @@
  * Creates one platform admin if users table is empty.
  * Password is passed via SEED_ADMIN_PASSWORD env var (min 8 chars).
  */
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import * as fs from "fs";
@@ -27,7 +28,7 @@ async function main() {
 
   const pool = new Pool({
     connectionString: DATABASE_URL,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined,
+    ssl: { rejectUnauthorized: false },
   });
 
   try {

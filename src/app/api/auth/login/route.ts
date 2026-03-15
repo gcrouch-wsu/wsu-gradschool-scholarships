@@ -47,9 +47,10 @@ export async function POST(request: NextRequest) {
       mustChangePassword: user.must_change_password,
     });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("Login error:", err);
     return NextResponse.json(
-      { error: "An error occurred during login" },
+      { error: msg },
       { status: 500 }
     );
   }

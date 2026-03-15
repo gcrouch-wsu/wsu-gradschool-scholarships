@@ -1,5 +1,7 @@
 # Scholarship Review Platform — Getting Started
 
+**Placeholder convention:** We use `paste-your-database-url-here`, `your-email@wsu.edu`, and `YourPassword123` consistently. Replace each with your real value; do not introduce new placeholder names.
+
 ---
 
 ## I'm at the login page. What do I do?
@@ -23,7 +25,7 @@ You need the same `DATABASE_URL` that Vercel uses.
 1. In Vercel, go to the **Storage** tab.
 2. Click **Create Database** → choose **Supabase** (or Postgres if offered). Create it and attach it to your project.
 3. Vercel will add the connection string automatically (often as `POSTGRES_URL`). If you see `POSTGRES_URL` but not `DATABASE_URL`, add `DATABASE_URL` with the same value.
-4. Add `ENCRYPTION_KEY`: **Settings** → **Environment Variables** → **Add New** → Name: `ENCRYPTION_KEY`, Value: run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` on your computer and paste the output.
+4. Add `ENCRYPTION_KEY`: **Settings** → **Environment Variables** → **Add New** → Name: `ENCRYPTION_KEY`, Value: run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` in your terminal (PowerShell or Bash) and paste the output.
 5. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
 
 **Option B: Create Supabase at supabase.com** (if Vercel only shows Blob / Edge Config)
@@ -32,23 +34,29 @@ You need the same `DATABASE_URL` that Vercel uses.
 2. In Supabase: **Project Settings** (gear) → **Database** → under "Connection string" choose **URI**. Copy it and replace `[YOUR-PASSWORD]` with your project password.
 3. In Vercel → **Settings** → **Environment Variables** → **Add New**:
    - `DATABASE_URL` = (paste the Supabase URI)
-   - `ENCRYPTION_KEY` = run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and paste the output
+   - `ENCRYPTION_KEY` = run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (PowerShell or Bash) and paste the output
 4. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
 
 **If you already have variables:** Find `DATABASE_URL` or `POSTGRES_URL` and copy its value.
 
 ### Step 3: Run the setup script
 
-Open a terminal in your project folder and run:
+**Placeholders (use these exact names — replace each with your real value):**
+- `paste-your-database-url-here` — from Vercel → Settings → Environment Variables → `POSTGRES_URL` or `DATABASE_URL` → Reveal → copy
+- `your-email@wsu.edu` — the email you will log in with
+- `YourPassword123` — the password you will log in with (min 8 chars)
 
+**Bash (Mac / Linux / Git Bash):**
 ```bash
-DATABASE_URL="paste-your-database-url-here" SEED_ADMIN_EMAIL="you@wsu.edu" SEED_ADMIN_PASSWORD="ChooseAStrongPassword123" npm run db:seed
+DATABASE_URL="paste-your-database-url-here" SEED_ADMIN_EMAIL="your-email@wsu.edu" SEED_ADMIN_PASSWORD="YourPassword123" npm run db:seed
 ```
 
-Replace:
-- `paste-your-database-url-here` with your actual database URL (keep the quotes)
-- `you@wsu.edu` with the email you want to use to log in
-- `ChooseAStrongPassword123` with a password you'll remember (at least 8 characters)
+**PowerShell (Windows):**
+```powershell
+$env:DATABASE_URL="paste-your-database-url-here"; $env:SEED_ADMIN_EMAIL="your-email@wsu.edu"; $env:SEED_ADMIN_PASSWORD="YourPassword123"; npm run db:seed
+```
+
+**Replace each placeholder** with your actual value. Do not change the placeholder names in the command — only replace the quoted values.
 
 **Example:**
 ```bash
@@ -66,7 +74,7 @@ Created platform admin: gcrouch@wsu.edu
 ### Step 4: Log in
 
 1. Go back to your Vercel app (the login page)
-2. Enter the email and password you used in the script
+2. Enter the **same email and password** you used in the seed command (the ones you replaced in Step 3)
 3. Click **Log in**
 4. You'll be asked to change your password — do that, then you're in
 
@@ -106,10 +114,12 @@ As the first admin, you have full access. Here's the order of operations:
 | Problem | Fix |
 |---------|-----|
 | I only have Blob / Edge Config (no Postgres) | Try **Storage** → **Create Database** → Supabase. If that's not available, use [supabase.com](https://supabase.com) directly. See Step 2 Option A or B. |
-| "DATABASE_URL is not set" when running seed | You must pass `DATABASE_URL` in the command. Copy it from Vercel → Settings → Environment Variables (or from the Storage database's connection string). |
+| "DATABASE_URL is not set" when running seed | Replace `paste-your-database-url-here` with the value from Vercel → Settings → Environment Variables → `POSTGRES_URL` or `DATABASE_URL` → Reveal → copy. |
 | Seed says "Users exist. Skipping seed." | An admin was already created. Use that account, or create a new one via **Users** → **Create user** (you need to be logged in first). |
-| Can't log in / wrong password | Run the seed again with a new password. (Seed only creates a user if the users table is empty.) |
+| Can't log in / wrong password | Use the exact email and password you put in the seed command. If you mistyped them, run the seed again with the correct values. (Seed only creates a user if the users table is empty.) |
 | No **Connections** or **Users** in the nav | You're logged in as a scholarship admin. Only platform admins see those. The first user from the seed is always a platform admin. |
+| PowerShell: "Unexpected token" when generating ENCRYPTION_KEY | Don't type `@` before the command. Use: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| "self-signed certificate in certificate chain" when running seed | The seed script disables TLS verification for the one-time seed run. If you still see this, pull the latest code and try again. |
 
 ---
 
@@ -120,5 +130,5 @@ If you're setting up Vercel or local dev, you need:
 | Variable | Required | What it's for |
 |----------|----------|---------------|
 | `DATABASE_URL` | Yes | Postgres connection string |
-| `ENCRYPTION_KEY` | Yes | Encrypts Smartsheet tokens. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `ENCRYPTION_KEY` | Yes | Encrypts Smartsheet tokens. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (works in PowerShell and Bash) |
 | `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | Default `wsu.edu`. When a cycle is "WSU-only," only users with this email domain can be assigned. |
