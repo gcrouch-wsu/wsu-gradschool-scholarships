@@ -16,13 +16,23 @@ You need the same `DATABASE_URL` that Vercel uses.
 
 **In Vercel:** Open your project → **Settings** (top nav) → **Environment Variables** (left sidebar).
 
-**If the list is empty** — you need to add variables first. This app needs Postgres. Vercel Storage may only show Blob and Edge Config; use **Supabase** (free) instead:
+**If the list is empty** — you need to add variables first. This app needs Postgres.
 
-1. **Create a Supabase database.** Go to [supabase.com](https://supabase.com) → Sign up → **New project** → pick a name and password. Wait for it to finish.
-2. **Get the connection string.** In Supabase: **Project Settings** (gear) → **Database** → under "Connection string" choose **URI**. Copy it and replace `[YOUR-PASSWORD]` with your project password.
-3. **Add variables in Vercel.** Go back to Vercel → **Settings** → **Environment Variables** → **Add New**:
-   - `DATABASE_URL` = (paste the Supabase URI; use the **Transaction** pooler on port 6543 for serverless)
-   - `ENCRYPTION_KEY` = run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` on your computer and paste the output
+**Option A: Create database from within Vercel (easiest)**
+
+1. In Vercel, go to the **Storage** tab.
+2. Click **Create Database** → choose **Supabase** (or Postgres if offered). Create it and attach it to your project.
+3. Vercel will add the connection string automatically (often as `POSTGRES_URL`). If you see `POSTGRES_URL` but not `DATABASE_URL`, add `DATABASE_URL` with the same value.
+4. Add `ENCRYPTION_KEY`: **Settings** → **Environment Variables** → **Add New** → Name: `ENCRYPTION_KEY`, Value: run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` on your computer and paste the output.
+5. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
+
+**Option B: Create Supabase at supabase.com** (if Vercel only shows Blob / Edge Config)
+
+1. Go to [supabase.com](https://supabase.com) → Sign up → **New project** → pick a name and password. Wait for it to finish.
+2. In Supabase: **Project Settings** (gear) → **Database** → under "Connection string" choose **URI**. Copy it and replace `[YOUR-PASSWORD]` with your project password.
+3. In Vercel → **Settings** → **Environment Variables** → **Add New**:
+   - `DATABASE_URL` = (paste the Supabase URI)
+   - `ENCRYPTION_KEY` = run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and paste the output
 4. **Redeploy** (Deployments → ⋮ on latest → Redeploy).
 
 **If you already have variables:** Find `DATABASE_URL` or `POSTGRES_URL` and copy its value.
@@ -95,7 +105,7 @@ As the first admin, you have full access. Here's the order of operations:
 
 | Problem | Fix |
 |---------|-----|
-| I only have Blob / Edge Config (no Postgres) | Use Supabase instead: [supabase.com](https://supabase.com) → create a project → get the database URI → add `DATABASE_URL` and `ENCRYPTION_KEY` in Vercel. See Step 2 above. |
+| I only have Blob / Edge Config (no Postgres) | Try **Storage** → **Create Database** → Supabase. If that's not available, use [supabase.com](https://supabase.com) directly. See Step 2 Option A or B. |
 | "DATABASE_URL is not set" when running seed | You must pass `DATABASE_URL` in the command. Copy it from Vercel → Settings → Environment Variables (or from the Storage database's connection string). |
 | Seed says "Users exist. Skipping seed." | An admin was already created. Use that account, or create a new one via **Users** → **Create user** (you need to be logged in first). |
 | Can't log in / wrong password | Run the seed again with a new password. (Seed only creates a user if the users table is empty.) |
