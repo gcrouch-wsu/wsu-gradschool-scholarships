@@ -14,7 +14,7 @@ export default async function ReviewerCyclePage({
   if (!user) return null;
   if (user.must_change_password) return null;
 
-  const { rows } = await query<{
+  const { rows: assignmentRows } = await query<{
     cycle_id: string;
     program_name: string;
     cycle_label: string;
@@ -30,7 +30,7 @@ export default async function ReviewerCyclePage({
      WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
     [user.id, cycleId]
   );
-  const assignment = rows[0];
+  const assignment = assignmentRows[0];
   if (!assignment) notFound();
 
   if (!assignment.sheet_id || !assignment.connection_id) {
@@ -69,8 +69,8 @@ export default async function ReviewerCyclePage({
     );
   }
 
-  const rows = await getReviewerNominees(user.id, cycleId);
-  if (rows === null) {
+  const nominees = await getReviewerNominees(user.id, cycleId);
+  if (nominees === null) {
     return (
       <div>
         <Link href="/reviewer" className="text-sm text-zinc-600 hover:underline">
@@ -86,7 +86,7 @@ export default async function ReviewerCyclePage({
     );
   }
 
-  if (rows.length === 0) {
+  if (nominees.length === 0) {
     return (
       <div>
         <Link href="/reviewer" className="text-sm text-zinc-600 hover:underline">
@@ -107,9 +107,9 @@ export default async function ReviewerCyclePage({
     [user.id, cycleId]
   );
   const lastRowId = progressRows[0]?.last_row_id ?? null;
-  const firstId = rows[0]!.id;
+  const firstId = nominees[0]!.id;
   const resumeId =
-    lastRowId && rows.some((r) => r.id === lastRowId)
+    lastRowId && nominees.some((r) => r.id === lastRowId)
       ? lastRowId
       : firstId;
 
@@ -136,7 +136,7 @@ export default async function ReviewerCyclePage({
       <div className="mt-6">
         <h2 className="mb-3 font-medium text-zinc-900">All nominees</h2>
         <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
-          {rows.map((n) => (
+          {nominees.map((n) => (
             <li key={n.id}>
               <Link
                 href={`/reviewer/${cycleId}/nominees/${n.id}`}
