@@ -158,6 +158,7 @@ export default async function CycleDetailPage({
   );
   const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
   const blindReview = viewSettings?.blindReview ?? false;
+  const isCycleActive = cycle.status === "active";
 
   return (
     <div>
@@ -248,7 +249,7 @@ export default async function CycleDetailPage({
             <SetupStep done={memberships.length > 0}>
               5. Assign reviewers
             </SetupStep>
-            <SetupStep done={cycle.status === "active"}>
+            <SetupStep done={isCycleActive}>
               6. Activate cycle (reviewers can see it)
             </SetupStep>
           </ol>
