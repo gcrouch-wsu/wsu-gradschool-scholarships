@@ -246,6 +246,16 @@ export async function POST(
     }
   }
 
+  const { rows: existingVc } = await tx<{ settings_json: unknown }>(
+    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const existingSettings = (existingVc[0]?.settings_json as Record<string, unknown>) ?? {};
+  const preserveKeys = ["blindReview"];
+  const preserved = Object.fromEntries(
+    preserveKeys.filter((k) => existingSettings[k] !== undefined).map((k) => [k, existingSettings[k]])
+  );
+
   await tx("DELETE FROM view_configs WHERE cycle_id = $1", [cycleId]);
   const vt = viewType || "tabbed";
   if (["tabbed", "stacked", "accordion", "list_detail"].includes(vt)) {
@@ -257,6 +267,7 @@ export async function POST(
         colors: colors ?? {},
         pinnedFieldKeys: pinnedFieldKeys ?? [],
         purposeOverrides: purposeOverrides ?? {},
+        ...preserved,
       })]
     );
     const viewConfigId = vcRows[0]?.id;

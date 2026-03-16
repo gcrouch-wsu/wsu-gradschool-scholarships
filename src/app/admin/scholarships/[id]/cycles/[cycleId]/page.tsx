@@ -7,6 +7,7 @@ import { ApplyTemplateForm } from "./ApplyTemplateForm";
 import { CloneConfigForm } from "./CloneConfigForm";
 import { ExportImportConfig } from "./ExportImportConfig";
 import { CycleSheetConfig } from "./CycleSheetConfig";
+import { BlindReviewToggle } from "./BlindReviewToggle";
 import { CycleStatusToggle } from "./CycleStatusToggle";
 import { ExternalReviewersToggle } from "./ExternalReviewersToggle";
 import { PublishConfigButton } from "./PublishConfigButton";
@@ -14,6 +15,23 @@ import { RemoveAssignmentButton } from "./RemoveAssignmentButton";
 import { SchemaDriftWarning } from "./SchemaDriftWarning";
 import { RenameCycleForm } from "./RenameCycleForm";
 import { DeleteCycleButton } from "./DeleteCycleButton";
+
+function SetupStep({
+  done,
+  children,
+}: {
+  done: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <li className={`flex items-start gap-2 ${done ? "text-zinc-600" : "text-zinc-900"}`}>
+      <span className="mt-0.5 shrink-0 font-medium" aria-hidden>
+        {done ? "✓" : "○"}
+      </span>
+      <span>{children}</span>
+    </li>
+  );
+}
 
 export default async function CycleDetailPage({
   params,
@@ -119,10 +137,27 @@ export default async function CycleDetailPage({
     "SELECT id FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
     [cycleId]
   );
-  const { rows: cycleWithPublished } = await query<{ published_config_version_id: string | null }>(
-    "SELECT published_config_version_id FROM scholarship_cycles WHERE id = $1",
+  const { rows: cycleWithPublished } = await query<{
+    published_config_version_id: string | null;
+    published_at: string | null;
+  }>(
+    `SELECT c.published_config_version_id, cv.published_at
+     FROM scholarship_cycles c
+     LEFT JOIN config_versions cv ON cv.id = c.published_config_version_id
+     WHERE c.id = $1`,
     [cycleId]
   );
+
+  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
+    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const { rows: fieldConfigs } = await query<{ id: string }>(
+    "SELECT id FROM field_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
+  const blindReview = viewSettings?.blindReview ?? false;
 
   return (
     <div>
@@ -156,6 +191,13 @@ export default async function CycleDetailPage({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <CycleStatusToggle cycleId={cycleId} status={cycle.status} />
+          {viewConfigs.length > 0 ? (
+            <BlindReviewToggle cycleId={cycleId} blindReview={blindReview} />
+          ) : (
+            <span className="text-sm text-zinc-500" title="Configure fields & layout first">
+              Blind review (configure fields first)
+            </span>
+          )}
           <ExternalReviewersToggle
             cycleId={cycleId}
             allowExternalReviewers={cycle.allow_external_reviewers}
@@ -184,6 +226,32 @@ export default async function CycleDetailPage({
       {templateError && (
         <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Template could not be applied: {decodeURIComponent(templateError)}
+        </div>
+      )}
+
+      {cycle.status === "draft" && (
+        <div className="mb-6 rounded-lg border border-zinc-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-zinc-900">Setup checklist</h2>
+          <ol className="space-y-2 text-sm">
+            <SetupStep done={!!(cycle.connection_id && cycle.sheet_id)}>
+              1. Connect a Smartsheet (select connection and enter Sheet ID below)
+            </SetupStep>
+            <SetupStep done={!!cycle.schema_synced_at}>
+              2. Import schema (sync columns from Smartsheet)
+            </SetupStep>
+            <SetupStep done={fieldConfigs.length > 0}>
+              3. Configure fields & layout (map columns, set labels, publish)
+            </SetupStep>
+            <SetupStep done={!!cycleWithPublished[0]?.published_config_version_id}>
+              4. Publish configuration (make it live for reviewers)
+            </SetupStep>
+            <SetupStep done={memberships.length > 0}>
+              5. Assign reviewers
+            </SetupStep>
+            <SetupStep done={cycle.status === "active"}>
+              6. Activate cycle (reviewers can see it)
+            </SetupStep>
+          </ol>
         </div>
       )}
 
@@ -216,7 +284,7 @@ export default async function CycleDetailPage({
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               href={`/admin/scholarships/${programId}/cycles/${cycleId}/builder`}
-              className="inline-flex items-center gap-2 rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="inline-flex items-center gap-2 rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
             >
               Configure fields & layout
               <span aria-hidden>→</span>
@@ -231,6 +299,7 @@ export default async function CycleDetailPage({
               cycleId={cycleId}
               latestConfigId={latestConfig[0]?.id ?? null}
               publishedConfigId={cycleWithPublished[0]?.published_config_version_id ?? null}
+              publishedAt={cycleWithPublished[0]?.published_at ?? null}
             />
           </div>
         </section>

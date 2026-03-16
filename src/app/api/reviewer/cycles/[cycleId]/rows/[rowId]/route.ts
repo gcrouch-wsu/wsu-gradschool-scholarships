@@ -94,6 +94,13 @@ export async function GET(
     [cycleId, data.roleId]
   );
 
+  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
+    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
+  const blindReview = viewSettings?.blindReview ?? false;
+
   const { rows: sectionFields } = await query<{
     view_section_id: string;
     field_config_id: string;
@@ -127,7 +134,10 @@ export async function GET(
   );
 
   const validConfigs = fieldConfigs.filter((f) => liveColumnIds.has(String(f.source_column_id)));
-  const fields = validConfigs.map((f) => ({
+  const configsForReview = blindReview
+    ? validConfigs.filter((f) => f.purpose !== "identity" && f.purpose !== "subtitle")
+    : validConfigs;
+  const fields = configsForReview.map((f) => ({
     fieldKey: f.field_key,
     sourceColumnId: f.source_column_id,
     purpose: f.purpose,

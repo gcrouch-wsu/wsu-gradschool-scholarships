@@ -123,7 +123,7 @@ export function CycleSheetConfig({
         </div>
         <div>
           <label className="block text-xs font-medium text-zinc-600">
-            Sheet ID
+            Smartsheet Sheet ID
           </label>
           <input
             type="text"
@@ -132,14 +132,27 @@ export function CycleSheetConfig({
             placeholder="e.g. 123456789"
             className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
           />
+          <a
+            href="https://help.smartsheet.com/articles/522203-how-to-find-your-sheet-id"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 block text-xs text-blue-600 hover:underline"
+          >
+            How to find this?
+          </a>
         </div>
       </div>
       {sheetName && (
         <p className="text-sm text-zinc-500">Sheet: {sheetName}</p>
       )}
       {schemaSyncedAt && (
-        <p className="text-xs text-zinc-400">
-          Schema synced {new Date(schemaSyncedAt).toLocaleString()}
+        <p className="text-xs text-zinc-500">
+          Columns last synced {new Date(schemaSyncedAt).toLocaleString()}
+        </p>
+      )}
+      {(!connId || !sheetIdInput) && (
+        <p className="text-xs text-zinc-500">
+          Select a connection and enter a Sheet ID to sync columns from Smartsheet.
         </p>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -156,9 +169,10 @@ export function CycleSheetConfig({
           type="button"
           onClick={handleImportSchema}
           disabled={syncing || !connId || !sheetIdInput}
-          className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+          title={!connId || !sheetIdInput ? "Select connection and enter Sheet ID first" : "Sync columns from Smartsheet"}
+          className="rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
         >
-          {syncing ? "Importing…" : "Import schema"}
+          {syncing ? "Syncing…" : "Sync columns from Smartsheet"}
         </button>
       </div>
     </div>

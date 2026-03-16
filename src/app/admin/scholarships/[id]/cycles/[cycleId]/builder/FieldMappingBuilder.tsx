@@ -496,6 +496,7 @@ export function FieldMappingBuilder({
   const [purposeOverrides, setPurposeOverrides] = useState<Record<string, PurposeOverride>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
   const historyRef = useRef<MappedField[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
@@ -720,6 +721,7 @@ export function FieldMappingBuilder({
         setError(d.error ?? "Failed to save");
         return;
       }
+      setLastSavedAt(new Date().toLocaleTimeString());
       router.refresh();
     } catch {
       setError("An error occurred");
@@ -1089,7 +1091,14 @@ export function FieldMappingBuilder({
         <LayoutPreview mapped={mapped} viewType={viewType} columns={columns} sections={sections} colors={colors} />
       </AccordionCard>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+      {lastSavedAt && (
+        <p className="text-sm text-green-600">Saved at {lastSavedAt}</p>
+      )}
 
       <div className="flex gap-2">
         <button

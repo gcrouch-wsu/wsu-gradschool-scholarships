@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface AssignReviewerFormProps {
@@ -19,10 +19,21 @@ export function AssignReviewerForm({
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const availableUsers = users.filter((u) => !existingUserIds.includes(u.id));
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) return availableUsers;
+    const q = searchQuery.toLowerCase().trim();
+    return availableUsers.filter(
+      (u) =>
+        u.last_name.toLowerCase().includes(q) ||
+        u.first_name.toLowerCase().includes(q) ||
+        (u.email ?? "").toLowerCase().includes(q)
+    );
+  }, [availableUsers, searchQuery]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,6 +66,15 @@ export function AssignReviewerForm({
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
       <div>
         <label className="block text-xs font-medium text-zinc-600">User</label>
+        {availableUsers.length > 10 && (
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name or email…"
+            className="mt-1 block w-48 rounded border border-zinc-300 px-2 py-1.5 text-sm"
+          />
+        )}
         <select
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
@@ -62,7 +82,7 @@ export function AssignReviewerForm({
           className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
         >
           <option value="">— Select —</option>
-          {availableUsers.map((u) => (
+          {filteredUsers.map((u) => (
             <option key={u.id} value={u.id}>
               {u.last_name}, {u.first_name} ({u.email})
             </option>
@@ -86,7 +106,7 @@ export function AssignReviewerForm({
       <button
         type="submit"
         disabled={loading || availableUsers.length === 0}
-        className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+        className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
       >
         {loading ? "Adding…" : "Assign"}
       </button>

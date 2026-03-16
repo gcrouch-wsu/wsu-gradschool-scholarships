@@ -2,7 +2,23 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { getReviewerNominees } from "@/lib/reviewer";
 import { ReviewerScoreForm } from "./ReviewerScoreForm";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ cycleId: string; rowId: string }>;
+}) {
+  const { cycleId, rowId } = await params;
+  const user = await getSessionUser();
+  if (!user) return { title: "Review nominee" };
+  const rowIdNum = parseInt(rowId, 10);
+  if (isNaN(rowIdNum)) return { title: "Review nominee" };
+  const nominees = await getReviewerNominees(user.id, cycleId);
+  const current = nominees?.find((n) => n.id === rowIdNum);
+  return { title: current?.displayName ?? "Review nominee" };
+}
 
 export default async function ReviewerNomineePage({
   params,
@@ -33,16 +49,20 @@ export default async function ReviewerNomineePage({
   const assignment = rows[0];
   if (!assignment) notFound();
 
+  const nominees = await getReviewerNominees(user.id, cycleId);
+  const currentNominee = nominees?.find((n) => n.id === rowIdNum);
+  const displayTitle = currentNominee?.displayName ?? "Review nominee";
+
   return (
     <div>
       <Link
         href={`/reviewer/${cycleId}`}
         className="text-sm text-zinc-600 hover:underline"
       >
-        ← {assignment.program_name} – {assignment.cycle_label}
+        ← All nominees
       </Link>
       <h1 className="mt-4 text-2xl font-semibold text-zinc-900">
-        Review nominee
+        {displayTitle}
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
         As {assignment.role_label}

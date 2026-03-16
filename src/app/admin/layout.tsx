@@ -25,14 +25,14 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-zinc-50">
       <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+        <div className="mx-auto flex h-auto min-h-14 max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
           <Link href="/admin" className="font-semibold text-[var(--wsu-crimson)]">
             WSU Scholarship Review
           </Link>
           <Link href="/reviewer" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
             My scholarships
           </Link>
-          <nav className="flex items-center gap-4">
+          <nav className="flex flex-wrap items-center gap-3">
             <Link href="/admin/scholarships" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
               Scholarships
             </Link>

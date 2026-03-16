@@ -140,10 +140,16 @@ export async function GET(
   const viewSettings = viewConfigs[0]?.settings_json as {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
+    blindReview?: boolean;
   } | null;
+  const blindReview = viewSettings?.blindReview ?? false;
+
+  const fieldsForReview = blindReview
+    ? validFields.filter((f) => f.purpose !== "identity" && f.purpose !== "subtitle")
+    : validFields;
 
   return NextResponse.json({
-    fieldConfigs: validFields,
+    fieldConfigs: fieldsForReview,
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,

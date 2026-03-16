@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -145,6 +145,7 @@ export function ReviewerScoreForm({
         return;
       }
       setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2500);
       if (andNext && nomineeIds.length > 0) {
         const idx = nomineeIds.indexOf(rowId);
         const nextId = idx >= 0 && idx < nomineeIds.length - 1 ? nomineeIds[idx + 1] : null;
@@ -161,8 +162,28 @@ export function ReviewerScoreForm({
     }
   }
 
+  const saveAndNextRef = useRef<() => void>(() => {});
+  saveAndNextRef.current = () => {
+    if (saveState !== "saving" && saveState !== "saved") handleSave(true);
+  };
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        saveAndNextRef.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (loading) {
-    return <div className="mt-6 text-zinc-500">Loading…</div>;
+    return (
+      <div className="mt-6 flex items-center gap-3 text-zinc-500" role="status" aria-live="polite">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
+        <span>Loading…</span>
+      </div>
+    );
   }
 
   if (error && fields.length === 0) {
@@ -189,8 +210,8 @@ export function ReviewerScoreForm({
 
   function renderReadOnlyField(f: Field) {
     return (
-      <div key={f.fieldKey}>
-        <div className="text-xs font-medium text-zinc-500">{f.displayLabel}</div>
+      <div key={f.fieldKey} role="group" aria-labelledby={`label-${f.fieldKey}`}>
+        <div id={`label-${f.fieldKey}`} className="text-xs font-medium text-zinc-600">{f.displayLabel}</div>
         <div className="mt-1 whitespace-pre-wrap text-zinc-900">
           {String(edits[f.sourceColumnId] ?? f.value ?? "")}
         </div>
@@ -205,7 +226,7 @@ export function ReviewerScoreForm({
           <select
             value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
             onChange={(e) => handleChange(f.sourceColumnId, e.target.value || null)}
-            className="mt-1 block w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full max-w-md rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           >
             <option value="">— Select —</option>
             {(columnOptions[f.sourceColumnId] ?? []).map((opt) => (
@@ -219,15 +240,56 @@ export function ReviewerScoreForm({
             value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
             onChange={(e) => handleChange(f.sourceColumnId, e.target.value)}
             rows={4}
-            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         )}
       </div>
     );
   }
 
+  const currentIndex = nomineeIds.indexOf(rowId);
+  const position = currentIndex >= 0 ? currentIndex + 1 : 0;
+  const total = nomineeIds.length;
+  const prevId = currentIndex > 0 ? nomineeIds[currentIndex - 1] : null;
+  const nextId = currentIndex >= 0 && currentIndex < total - 1 ? nomineeIds[currentIndex + 1] : null;
+
   return (
-    <div className="mt-6 space-y-6">
+    <div className="mt-6 space-y-6 pb-24">
+      {total > 0 && (
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {prevId && (
+                <Link
+                  href={`/reviewer/${cycleId}/nominees/${prevId}`}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  ← Previous
+                </Link>
+              )}
+              <span className="text-sm font-medium text-zinc-700">
+                Nominee {position} of {total}
+              </span>
+              {nextId && (
+                <Link
+                  href={`/reviewer/${cycleId}/nominees/${nextId}`}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  Next →
+                </Link>
+              )}
+            </div>
+            <div className="min-w-[120px] flex-1 max-w-xs">
+              <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+                <div
+                  className="h-full rounded-full bg-[var(--wsu-crimson)] transition-all duration-300"
+                  style={{ width: `${total ? (position / total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {attachments.length > 0 && (
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
           <h2 className="mb-3 font-medium text-zinc-900">Attachments</h2>
@@ -259,8 +321,8 @@ export function ReviewerScoreForm({
         >
           <div className="flex flex-wrap gap-x-8 gap-y-1.5">
             {pinnedFields.map((f) => (
-              <div key={f.fieldKey}>
-                <div className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+              <div key={f.fieldKey} role="group" aria-labelledby={`pinned-label-${f.fieldKey}`}>
+                <div id={`pinned-label-${f.fieldKey}`} className="text-xs font-medium uppercase tracking-wide text-zinc-600">
                   {f.displayLabel}
                 </div>
                 <div className="text-sm font-semibold" style={{ color: colors.headerText }}>
@@ -294,8 +356,12 @@ export function ReviewerScoreForm({
           </div>
           <div className="p-4">
             <div className="space-y-4">
-              {(fieldsBySection[activeTab] ?? []).map((f) =>
-                f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+              {(fieldsBySection[activeTab] ?? []).length > 0 ? (
+                (fieldsBySection[activeTab] ?? []).map((f) =>
+                  f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                )
+              ) : (
+                <p className="text-sm text-zinc-500">No fields in this section.</p>
               )}
             </div>
           </div>
@@ -311,8 +377,12 @@ export function ReviewerScoreForm({
                     {s.label}
                   </summary>
                   <div className="space-y-4 border-t border-zinc-200 px-4 pb-4 pt-3">
-                    {sectionFields.map((f) =>
-                      f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                    {sectionFields.length > 0 ? (
+                      sectionFields.map((f) =>
+                        f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                      )
+                    ) : (
+                      <p className="text-sm text-zinc-500">No fields in this section.</p>
                     )}
                   </div>
                 </details>
@@ -327,8 +397,12 @@ export function ReviewerScoreForm({
                 <div key={s.section_key} className="rounded-lg border border-zinc-200 bg-white p-4">
                   <h2 className="mb-3 font-medium text-zinc-900">{s.label}</h2>
                   <div className="space-y-4">
-                    {sectionFields.map((f) =>
-                      f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                    {sectionFields.length > 0 ? (
+                      sectionFields.map((f) =>
+                        f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
+                      )
+                    ) : (
+                      <p className="text-sm text-zinc-500">No fields in this section.</p>
                     )}
                   </div>
                 </div>
@@ -365,44 +439,49 @@ export function ReviewerScoreForm({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => handleSave(false)}
-          disabled={saveState === "saving" || saveState === "saved"}
-          className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "saved"
-              ? "Saved"
-              : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSave(true)}
-          disabled={saveState === "saving" || saveState === "saved"}
-          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          Save & Next
-        </button>
-        <button
-          type="button"
-          onClick={loadRow}
-          disabled={loading}
-          className="rounded border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-50"
-        >
-          Refresh
-        </button>
-        {saveState === "unsaved_changes" && (
-          <span className="text-sm text-amber-600">Unsaved changes</span>
-        )}
-        <Link
-          href={`/reviewer/${cycleId}`}
-          className="text-sm text-zinc-600 hover:underline"
-        >
-          Back to list
-        </Link>
+      <div className="sticky bottom-0 mt-8 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm" role="status" aria-live="polite" aria-atomic="true">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              disabled={saveState === "saving" || saveState === "saved"}
+              className="rounded-md bg-[var(--wsu-crimson)] px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+              title="Ctrl+Enter"
+            >
+              Save & Next
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSave(false)}
+              disabled={saveState === "saving" || saveState === "saved"}
+              className="rounded-md border border-zinc-300 bg-white px-5 py-2.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                  ? "Saved"
+                  : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={loadRow}
+              disabled={loading}
+              className="rounded-md border border-zinc-200 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-50"
+            >
+              Reload data
+            </button>
+            {saveState === "unsaved_changes" && (
+              <span className="text-sm font-medium text-amber-600">Unsaved changes</span>
+            )}
+          </div>
+          <Link
+            href={`/reviewer/${cycleId}`}
+            className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)] hover:underline"
+          >
+            ← All nominees
+          </Link>
+        </div>
       </div>
     </div>
   );

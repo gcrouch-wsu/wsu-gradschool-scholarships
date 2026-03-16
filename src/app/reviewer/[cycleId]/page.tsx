@@ -69,11 +69,49 @@ export default async function ReviewerCyclePage({
     );
   }
 
+  const rows = await getReviewerNominees(user.id, cycleId);
+  if (rows === null) {
+    return (
+      <div>
+        <Link href="/reviewer" className="text-sm text-zinc-600 hover:underline">
+          ← My scholarships
+        </Link>
+        <h1 className="mt-4 text-2xl font-semibold text-zinc-900">
+          {assignment.program_name} – {assignment.cycle_label}
+        </h1>
+        <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          Could not load nominees. Please try again.
+        </div>
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div>
+        <Link href="/reviewer" className="text-sm text-zinc-600 hover:underline">
+          ← My scholarships
+        </Link>
+        <h1 className="mt-4 text-2xl font-semibold text-zinc-900">
+          {assignment.program_name} – {assignment.cycle_label}
+        </h1>
+        <p className="mt-6 text-zinc-600">
+          No nominees in this cycle.
+        </p>
+      </div>
+    );
+  }
+
   const { rows: progressRows } = await query<{ last_row_id: number | null }>(
     "SELECT last_row_id FROM user_cycle_progress WHERE user_id = $1 AND cycle_id = $2",
     [user.id, cycleId]
   );
   const lastRowId = progressRows[0]?.last_row_id ?? null;
+  const firstId = rows[0]!.id;
+  const resumeId =
+    lastRowId && rows.some((r) => r.id === lastRowId)
+      ? lastRowId
+      : firstId;
 
   return (
     <div>
@@ -86,52 +124,30 @@ export default async function ReviewerCyclePage({
       <p className="mt-1 text-sm text-zinc-500">
         You are reviewing as {assignment.role_label}
       </p>
-      {lastRowId && (
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <Link
-          href={`/reviewer/${cycleId}/nominees/${lastRowId}`}
-          className="mt-4 inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          href={`/reviewer/${cycleId}/nominees/${resumeId}`}
+          className="inline-flex items-center gap-2 rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
         >
-          Continue where you left off
+          {lastRowId && lastRowId !== firstId ? "Continue where you left off" : "Start reviewing"}
+          <span aria-hidden>→</span>
         </Link>
-      )}
-      <NomineeList cycleId={cycleId} userId={user.id} />
-    </div>
-  );
-}
-
-async function NomineeList({ cycleId, userId }: { cycleId: string; userId: string }) {
-  const rows = await getReviewerNominees(userId, cycleId);
-  if (rows === null) {
-    return (
-      <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-4 text-amber-900">
-        Could not load nominees. Please try again.
       </div>
-    );
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="mt-6 text-zinc-600">
-        No nominees in this cycle.
+      <div className="mt-6">
+        <h2 className="mb-3 font-medium text-zinc-900">All nominees</h2>
+        <ul className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
+          {rows.map((n) => (
+            <li key={n.id}>
+              <Link
+                href={`/reviewer/${cycleId}/nominees/${n.id}`}
+                className="block px-4 py-3 text-zinc-900 hover:bg-zinc-50"
+              >
+                {n.displayName}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
-    );
-  }
-
-  return (
-    <div className="mt-6 space-y-2">
-      <h2 className="font-medium text-zinc-900">Nominees</h2>
-      <ul className="divide-y divide-zinc-200 rounded border border-zinc-200 bg-white">
-        {rows.map((n) => (
-          <li key={n.id}>
-            <Link
-              href={`/reviewer/${cycleId}/nominees/${n.id}`}
-              className="block px-4 py-3 hover:bg-zinc-50"
-            >
-              {n.displayName}
-            </Link>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
