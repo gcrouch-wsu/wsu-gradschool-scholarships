@@ -27,7 +27,7 @@ export default async function AdminLayout({
       <header className="border-b border-zinc-200 bg-white">
         <div className="mx-auto flex h-auto min-h-14 max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
           <Link href="/admin" className="flex items-center gap-2.5">
-            <img src="/wsu-logo.svg" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
+            <img src="/wsu-logo.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--wsu-crimson)]">WSU Graduate School</p>
               <p className="text-sm font-semibold tracking-tight text-zinc-900">Scholarship Review</p>

@@ -44,7 +44,7 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-zinc-100">
       <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
-          <img src="/wsu-logo.svg" alt="" aria-hidden="true" className="h-10 w-10 shrink-0" />
+          <img src="/wsu-logo.png" alt="" aria-hidden="true" className="h-10 w-10 shrink-0" />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--wsu-crimson)]">WSU Graduate School</p>
             <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-zinc-900">Scholarship Review</h1>
