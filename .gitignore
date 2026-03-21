@@ -54,3 +54,6 @@ token.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local reference files (not for repo)
+/input_forms
