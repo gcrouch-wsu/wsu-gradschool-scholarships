@@ -265,7 +265,7 @@ function LayoutPreview({
             <select
               value={previewValues[m.fieldKey] ?? ""}
               onChange={(e) => setPreviewValues((prev) => ({ ...prev, [m.fieldKey]: e.target.value }))}
-              className="mt-1 rounded border border-zinc-300 px-2 py-1 text-sm"
+              className="mt-1 rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
               style={{ accentColor: colors.accent }}
             >
               <option value="">— Select —</option>
@@ -433,7 +433,7 @@ function ColorSwatch({
             const v = e.target.value;
             if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v);
           }}
-          className="w-20 rounded border border-zinc-300 px-1.5 py-1 text-xs font-mono"
+          className="w-20 rounded-md border border-zinc-300 px-1.5 py-1 text-xs font-mono focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           placeholder="#000000"
         />
         <button
@@ -794,7 +794,7 @@ export function FieldMappingBuilder({
                     }))
                   }
                   placeholder={p.label}
-                  className="flex-1 rounded border border-zinc-300 px-2 py-1 text-sm font-medium"
+                  className="flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm font-medium focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                 />
                 <label className="flex shrink-0 items-center gap-1 text-xs">
                   <input
@@ -820,7 +820,7 @@ export function FieldMappingBuilder({
                   }))
                 }
                 placeholder={p.desc}
-                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600"
+                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-600 focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
               />
             </div>
           ))}
@@ -917,7 +917,7 @@ export function FieldMappingBuilder({
                         displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
                       })
                     }
-                    className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                     title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
                   >
                     {(() => {
@@ -938,7 +938,7 @@ export function FieldMappingBuilder({
                   value={m.displayLabel}
                   onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
                   placeholder="Display label"
-                  className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                  className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                 />
                 {usesSections && (
                   m.pinned ? (
@@ -947,7 +947,7 @@ export function FieldMappingBuilder({
                     <select
                       value={m.sectionKey ?? sections[0]?.section_key ?? ""}
                       onChange={(e) => updateMapping(idx, { sectionKey: e.target.value })}
-                      className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                      className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                     >
                       {sections.map((s) => (
                         <option key={s.section_key} value={s.section_key}>
@@ -1065,7 +1065,7 @@ export function FieldMappingBuilder({
                   type="text"
                   value={s.label}
                   onChange={(e) => updateSection(i, { label: e.target.value })}
-                  className="w-32 rounded border-0 bg-transparent px-1 py-0.5 text-sm focus:ring-1 focus:ring-zinc-400"
+                  className="w-32 rounded border-0 bg-transparent px-1 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                   placeholder="Section label"
                 />
                 {sections.length > 1 && (

@@ -23,7 +23,6 @@
 # misc
 .DS_Store
 *.pem
-handoff.MD
 
 # debug
 npm-debug.log*

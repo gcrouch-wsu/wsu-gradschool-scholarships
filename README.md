@@ -17,10 +17,10 @@ Admin-managed application layer on top of Smartsheet for scholarship-style revie
    npm install
    ```
 
-2. Configure environment (copy `.env.example` to `.env.local`):
+2. Configure environment (copy `.env.example` to `.env.local` and fill in):
 
    - `DATABASE_URL` – Postgres connection string
-   - `ENCRYPTION_KEY` – 32+ char key for encrypting Smartsheet tokens (e.g. `openssl rand -hex 32`)
+   - `ENCRYPTION_KEY` – 32+ char key for encrypting Smartsheet tokens (e.g. `openssl rand -hex 32` or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 
 3. Apply schema and seed initial admin:
 
@@ -38,11 +38,12 @@ Admin-managed application layer on top of Smartsheet for scholarship-style revie
 
 5. Log in at `/login` with the seeded admin account.
 
-## Deploying changes (Vercel)
+For detailed setup (first login, database creation, troubleshooting), see **[instruction.md](instruction.md)**.
+
+## Deploying (Vercel)
 
 - **Code changes:** Commit and push to GitHub. Vercel auto-deploys on push.
 - **Environment variable changes:** Redeploy in Vercel (Deployments → ⋮ → Redeploy). No commit needed.
-- See `instruction.md` for full setup and deployment details.
 
 ## Project structure
 
@@ -51,34 +52,11 @@ Admin-managed application layer on top of Smartsheet for scholarship-style revie
 - `supabase/migrations/` – Postgres schema
 - `scripts/` – Seed and utility scripts
 
-## Build phases (from handoff)
+## Features
 
-- **Phase 0–1** (implemented): Auth, programs/cycles, users, assignments, connections, schema import, reviewer landing
-- **Phase 2** (implemented): Smartsheet connection, schema sync
-- **Phase 3** (implemented): Guided field-mapping builder
-- **Phase 4** (implemented): Reviewer runtime (nominee list, scoring, Smartsheet writeback)
-- **Phase 5** (implemented): Production hardening (audit logging, connection verification/rotation, schema drift warnings, smoke tests)
-- **Phase 6** (implemented): Template and reuse (clone config from prior cycle, versioned config publishing)
-
-## What was built (Phase 0 + Phase 1)
-
-- **Auth**: Login, logout, DB-backed sessions, `must_change_password` flow, change-password page (redirects to /admin or /reviewer by role)
-- **Admin boundary**: Only platform admins can access /admin; reviewers redirect to /reviewer
-- **Admin**: Dashboard, Scholarships (programs + cycles), Users (create, reset password, activate/deactivate), Connections (encrypted Smartsheet tokens)
-- **Cycle config**: Link connection + sheet ID, import schema from Smartsheet, allow_external_reviewers toggle
-- **Assignments**: Assign users to cycles with roles, remove assignments
-- **Session**: Cookie maxAge from app_config, session warning banner before expiry
-- **Reviewer**: "My scholarships" page listing assigned active cycles (runtime stub for Phase 4)
-- **Phase 3 Builder**: Field mapping (identity, narrative, score, comments), role visibility, layout selection (tabbed/stacked/accordion/list_detail), preview stub
-- **Scholarship admin**: program_admins table; scholarship admins manage cycles, builder, assignments for their programs; connections remain platform-admin only
-- **Phase 4 Reviewer**: Nominee list, detail view with narrative/score/comments, Smartsheet writeback, save-state handling (idle/saving/saved/failed, retriable vs fatal)
-- **Phase 5**: Audit logging (user/program/connection/cycle/assignment/reviewer actions), connection test+rotate, schema drift warnings, vitest smoke tests
-- **Phase 6**: Clone config from prior cycle (same program), config versioning on builder save, publish config
-- **Post–Phase 6**: Audit/Activity UI (`/admin/audit`), timeout settings UI (`/admin/settings`), Save & Next, resume where left off, row loaded timestamp and refresh, read-only Smartsheet attachments, builder attachment purpose, config export/import, reusable scholarship templates
-
-## Deferred
-
-- **Middleware → proxy migration**: Next.js deprecation warning; migrate when ready.
+- **Admin:** Programs, cycles, connections, users, assignments, field-mapping builder, config publish/unpublish, blind review, templates
+- **Reviewer:** Assigned cycles, nominee list, scoring and comments, Save & Next, resume where left off, read-only attachments
+- **Security:** Encrypted Smartsheet tokens, httpOnly sessions, server-side field permissions, audit logging
 
 ## Security
 

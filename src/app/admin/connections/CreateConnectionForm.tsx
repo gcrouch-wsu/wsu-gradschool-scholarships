@@ -62,7 +62,7 @@ export function CreateConnectionForm({
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. WSU Grad School"
           required
-          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         />
       </div>
       <div>
@@ -76,7 +76,7 @@ export function CreateConnectionForm({
           onChange={(e) => setToken(e.target.value)}
           required
           autoComplete="off"
-          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         />
         <p className="mt-1 text-xs text-zinc-500">
           Token is encrypted and never shown again.
@@ -90,7 +90,7 @@ export function CreateConnectionForm({
           id="program"
           value={programId}
           onChange={(e) => setProgramId(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">— Unassigned (platform only) —</option>
           {programs.map((p) => (
@@ -103,11 +103,11 @@ export function CreateConnectionForm({
           Scholarship admins can only use connections assigned to their program.
         </p>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <button
         type="submit"
         disabled={loading}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+        className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
       >
         {loading ? "Adding…" : "Add connection"}
       </button>

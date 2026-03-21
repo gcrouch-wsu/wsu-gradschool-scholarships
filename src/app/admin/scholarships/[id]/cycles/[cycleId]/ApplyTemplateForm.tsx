@@ -69,7 +69,7 @@ export function ApplyTemplateForm({ cycleId }: { cycleId: string }) {
         <select
           value={selectedId}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">— Select template —</option>
           {templates.map((t) => (

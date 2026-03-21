@@ -147,7 +147,7 @@ export function ExportImportConfig({
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
               placeholder="Template name"
-              className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
             />
             <button
               type="button"

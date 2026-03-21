@@ -72,7 +72,7 @@ export function ProgramAdminsSection({ programId }: ProgramAdminsSectionProps) {
         <select
           value={selectedUserId}
           onChange={(e) => setSelectedUserId(e.target.value)}
-          className="rounded border border-zinc-300 px-3 py-2 text-sm"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">— Add admin —</option>
           {availableUsers.map((u) => (
@@ -85,7 +85,7 @@ export function ProgramAdminsSection({ programId }: ProgramAdminsSectionProps) {
           type="button"
           onClick={handleAdd}
           disabled={adding || !selectedUserId}
-          className="rounded bg-zinc-900 px-3 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded-md bg-[var(--wsu-crimson)] px-3 py-2 text-sm text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
         >
           {adding ? "Adding…" : "Add"}
         </button>

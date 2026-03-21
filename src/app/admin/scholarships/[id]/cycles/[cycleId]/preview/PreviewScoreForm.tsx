@@ -161,7 +161,7 @@ export function PreviewScoreForm({
             onChange={(e) =>
               setEdits((prev) => ({ ...prev, [f.sourceColumnId]: e.target.value || null }))
             }
-            className="mt-1 block w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full max-w-md rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           >
             <option value="">— Select —</option>
             {(columnOptions[f.sourceColumnId] ?? []).map((opt) => (
@@ -178,7 +178,7 @@ export function PreviewScoreForm({
             }
             rows={4}
             placeholder="Enter comments or recommendations..."
-            className="mt-1 block w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         )}
       </div>

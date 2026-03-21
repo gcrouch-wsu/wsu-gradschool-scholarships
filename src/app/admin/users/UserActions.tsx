@@ -71,12 +71,12 @@ export function UserActions({ userId, status }: UserActionsProps) {
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
             minLength={8}
-            className="rounded border border-zinc-300 px-2 py-1 text-sm"
+            className="rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded bg-zinc-900 px-2 py-1 text-sm text-white disabled:opacity-50"
+            className="rounded-md bg-[var(--wsu-crimson)] px-2 py-1 text-sm text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
           >
             Set
           </button>

@@ -72,14 +72,14 @@ export function AssignReviewerForm({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or email…"
-            className="mt-1 block w-48 rounded border border-zinc-300 px-2 py-1.5 text-sm"
+            className="mt-1 block w-48 rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         )}
         <select
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
           required
-          className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">— Select —</option>
           {filteredUsers.map((u) => (
@@ -94,7 +94,7 @@ export function AssignReviewerForm({
         <select
           value={roleId}
           onChange={(e) => setRoleId(e.target.value)}
-          className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           {roles.map((r) => (
             <option key={r.id} value={r.id}>

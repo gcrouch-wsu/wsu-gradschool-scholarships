@@ -94,10 +94,11 @@ As the first admin, you have full access. Here's the order of operations:
 | 1 | Create a program (e.g. "Graduate School Scholarships") | **Scholarships** → **Add program** |
 | 2 | Add a Smartsheet connection (so the app can read your sheets) | **Connections** → **Add connection** |
 | 3 | Create a cycle (e.g. "Spring 2025") | Open your program → **Add cycle** |
-| 4 | Connect the cycle to a Smartsheet | On the cycle page, pick the connection and sheet |
+| 4 | Connect the cycle to a Smartsheet | On the cycle page, select connection, enter Sheet ID, then click **Sync columns from Smartsheet** |
 | 5 | Map fields (which columns are scores, narratives, etc.) | **Configure fields & layout** |
 | 6 | Publish the config | **Publish** button on the cycle page |
 | 7 | Assign reviewers | **Assigned reviewers** section on the cycle page |
+| 8 | Activate the cycle | **Active** toggle on the cycle page (reviewers can then see it) |
 
 ---
 
@@ -127,6 +128,7 @@ As the first admin, you have full access. Here's the order of operations:
 | "self-signed certificate in certificate chain" when running seed or logging in | The app uses `sslmode=no-verify` for Supabase. Pull the latest code. For seed: run again. For login: ask the assistant to commit and push so Vercel deploys the fix. |
 | I changed code — do I commit or redeploy? | **Commit and push** (ask the assistant). Vercel auto-deploys on push. |
 | I changed env vars in Vercel — do I commit or redeploy? | **Redeploy in Vercel** only. No commit needed. |
+| Column types show as "—" in the field builder | Re-sync the schema: on the cycle page, click **Sync columns from Smartsheet** again. |
 
 ---
 
@@ -138,4 +140,4 @@ If you're setting up Vercel or local dev, you need:
 |----------|----------|---------------|
 | `DATABASE_URL` | Yes | Postgres connection string |
 | `ENCRYPTION_KEY` | Yes | Encrypts Smartsheet tokens. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (works in PowerShell and Bash) |
-| `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | Default `wsu.edu`. When a cycle is "WSU-only," only users with this email domain can be assigned. |
+| `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | Default `wsu.edu`. Restricts reviewer assignments on "WSU-only" cycles to users whose email ends in this domain. Override only if your institution uses a different domain (e.g. `email.wsu.edu`). |

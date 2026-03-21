@@ -102,7 +102,7 @@ export function CycleSheetConfig({
   }
 
   return (
-    <div className="space-y-3 rounded border border-zinc-200 bg-white p-4">
+    <div className="space-y-3 rounded-lg border border-zinc-200 bg-white p-4">
       <div className="flex flex-wrap gap-4">
         <div>
           <label className="block text-xs font-medium text-zinc-600">
@@ -111,7 +111,7 @@ export function CycleSheetConfig({
           <select
             value={connId}
             onChange={(e) => setConnId(e.target.value)}
-            className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           >
             <option value="">— Select —</option>
             {connections.map((c) => (
@@ -130,7 +130,7 @@ export function CycleSheetConfig({
             value={sheetIdInput}
             onChange={(e) => setSheetIdInput(e.target.value)}
             placeholder="e.g. 123456789"
-            className="mt-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
           <a
             href="https://help.smartsheet.com/articles/522203-how-to-find-your-sheet-id"

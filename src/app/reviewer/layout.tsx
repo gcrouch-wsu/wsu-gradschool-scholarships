@@ -16,8 +16,9 @@ export default async function ReviewerLayout({
     <div className="min-h-screen bg-zinc-50">
       <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link href="/reviewer" className="font-semibold text-[var(--wsu-crimson)]">
-            WSU Scholarship Review
+          <Link href="/reviewer" className="flex items-center gap-2 font-semibold text-[var(--wsu-crimson)]">
+            <img src="/wsu-logo.svg" alt="" aria-hidden="true" className="h-7 w-7 shrink-0" />
+            WSU Graduate School Scholarship Review
           </Link>
           <Link href="/admin" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
             Admin

@@ -54,7 +54,7 @@ export function RotateButton({
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="New token"
-            className="rounded border border-zinc-300 px-2 py-1 text-sm"
+            className="rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
           {error && <span className="text-xs text-red-600">{error}</span>}
           <div className="flex gap-2">
@@ -62,7 +62,7 @@ export function RotateButton({
               type="button"
               onClick={handleRotate}
               disabled={status === "rotating" || !token.trim()}
-              className="rounded bg-zinc-900 px-2 py-1 text-xs text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-md bg-[var(--wsu-crimson)] px-2 py-1 text-xs text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
             >
               {status === "rotating" ? "Rotating…" : "Rotate"}
             </button>

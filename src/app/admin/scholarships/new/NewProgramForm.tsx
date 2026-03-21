@@ -66,7 +66,7 @@ export function NewProgramForm() {
               if (!slug) setSlug(slugFromName());
             }}
             required
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         </div>
         <div>
@@ -79,7 +79,7 @@ export function NewProgramForm() {
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder={slugFromName() || "e.g. gdapp"}
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
           <p className="mt-1 text-xs text-zinc-500">
             Lowercase letters, numbers, hyphens only
@@ -94,15 +94,15 @@ export function NewProgramForm() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <div className="flex gap-2">
           <button
             type="submit"
             disabled={loading}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
           >
             {loading ? "Creating…" : "Create program"}
           </button>

@@ -48,7 +48,7 @@ export function AuditLogView({
         <select
           value={actionType}
           onChange={(e) => setActionType(e.target.value)}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">All actions</option>
           {actionTypes.map((t) => (
@@ -60,7 +60,7 @@ export function AuditLogView({
         <select
           value={cycleId}
           onChange={(e) => setCycleId(e.target.value)}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         >
           <option value="">All cycles</option>
           {cycles.map((c) => (

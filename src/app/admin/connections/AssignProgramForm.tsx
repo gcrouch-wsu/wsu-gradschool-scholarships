@@ -44,7 +44,7 @@ export function AssignProgramForm({
       <select
         value={programId}
         onChange={(e) => setProgramId(e.target.value)}
-        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+        className="rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         title={`Assign ${connectionName} to program`}
       >
         <option value="">— Unassigned (platform only) —</option>

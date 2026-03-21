@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scholarship Review Platform",
+  title: "WSU Graduate School Scholarship Review",
   description: "Admin-managed review interface for Smartsheet-backed scholarship workflows",
 };
 

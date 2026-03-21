@@ -43,9 +43,12 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-100">
       <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-xl font-semibold text-[var(--wsu-crimson)]">
-          WSU Scholarship Review
-        </h1>
+        <div className="mb-6 flex items-center gap-3">
+          <img src="/wsu-logo.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0" />
+          <h1 className="text-xl font-semibold text-[var(--wsu-crimson)]">
+            WSU Graduate School<br />Scholarship Review
+          </h1>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-zinc-700">
