@@ -19,6 +19,9 @@ export function getPool(): Pool {
     globalForDb.pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
+      max: 2,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
     });
   }
   return globalForDb.pool;

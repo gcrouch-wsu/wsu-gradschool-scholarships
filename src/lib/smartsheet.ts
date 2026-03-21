@@ -39,6 +39,19 @@ export async function testConnection(token: string): Promise<{ ok: boolean; erro
 
 const DEFAULT_WRITE_TIMEOUT_MS = 30000;
 
+function parseSmartsheetError(body: string, httpStatus: number): { message: string; errorCode?: number; httpStatus: number } {
+  try {
+    const parsed = JSON.parse(body) as { errorCode?: number; message?: string };
+    return {
+      message: parsed.message ?? (body || `HTTP ${httpStatus}`),
+      errorCode: parsed.errorCode,
+      httpStatus,
+    };
+  } catch {
+    return { message: body || `HTTP ${httpStatus}`, httpStatus };
+  }
+}
+
 export async function getSheetRows(
   token: string,
   sheetId: number
@@ -82,8 +95,13 @@ export async function updateRowCells(
   rowId: number,
   cells: Array<{ columnId: number; value: unknown }>,
   timeoutMs?: number
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; httpStatus?: number; errorCode?: number }> {
   const ms = timeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
+  // Coerce null → "" — Smartsheet rejects explicit JSON null on any cell value
+  const safeCells = cells.map((c) => ({
+    columnId: c.columnId,
+    value: c.value === null ? "" : c.value,
+  }));
   try {
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows`, {
       method: "PUT",
@@ -91,12 +109,13 @@ export async function updateRowCells(
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify([{ id: rowId, cells }]),
+      body: JSON.stringify([{ id: rowId, cells: safeCells }]),
       signal: AbortSignal.timeout(ms),
     });
     if (!res.ok) {
       const body = await res.text();
-      return { ok: false, error: body || `HTTP ${res.status}` };
+      const parsed = parseSmartsheetError(body, res.status);
+      return { ok: false, error: parsed.message, httpStatus: parsed.httpStatus, errorCode: parsed.errorCode };
     }
     return { ok: true };
   } catch (err) {
@@ -125,19 +144,23 @@ export async function getSheetSchema(
         id: number;
         index: number;
         title: string;
-        type: string;
+        type?: string;
+        columnType?: string;
         options?: string[];
         locked?: boolean;
       }>;
     };
-    const columns = (data.columns ?? []).map((c) => ({
-      id: c.id,
-      index: c.index,
-      title: c.title,
-      type: c.type,
-      options: c.options,
-      locked: c.locked,
-    }));
+    const columns = (data.columns ?? []).map((c) => {
+      const colType = c.type ?? c.columnType;
+      return {
+        id: c.id,
+        index: c.index,
+        title: c.title,
+        type: typeof colType === "string" && colType ? colType : "TEXT_NUMBER",
+        options: c.options,
+        locked: c.locked,
+      };
+    });
     return {
       ok: true,
       sheet: {

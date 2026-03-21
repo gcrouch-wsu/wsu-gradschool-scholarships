@@ -227,17 +227,11 @@ export async function POST(
   );
 
   if (!result.ok) {
-    const isRetriable =
-      result.error?.includes("timeout") ||
-      result.error?.includes("rate") ||
-      result.error?.includes("503") ||
-      result.error?.includes("429");
+    const isRateLimit = result.httpStatus === 429 || result.errorCode === 4003;
+    const isRetriable = isRateLimit || result.error?.includes("timeout") || result.httpStatus === 503;
     return NextResponse.json(
-      {
-        error: result.error ?? "Save failed",
-        retriable: isRetriable,
-      },
-      { status: 500 }
+      { error: result.error ?? "Save failed", retriable: isRetriable },
+      { status: isRateLimit ? 429 : 500 }
     );
   }
 
