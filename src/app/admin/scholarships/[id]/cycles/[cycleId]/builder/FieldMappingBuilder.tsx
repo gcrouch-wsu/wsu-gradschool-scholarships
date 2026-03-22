@@ -485,7 +485,7 @@ export function FieldMappingBuilder({
     columns: Column[];
     fieldConfigs: FieldConfig[];
     roles: Role[];
-    viewConfigs: { view_type: string; settings_json?: { colors?: LayoutColors; pinnedFieldKeys?: string[] } | null }[];
+    viewConfigs: { view_type: string; settings_json?: { colors?: LayoutColors; pinnedFieldKeys?: string[]; blindReview?: boolean } | null }[];
     viewSections?: ViewSection[];
     sectionFields?: Array<{ view_section_id: string; field_config_id: string; sort_order: number }>;
   } | null>(null);
@@ -494,6 +494,7 @@ export function FieldMappingBuilder({
   const [viewType, setViewType] = useState("tabbed");
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [purposeOverrides, setPurposeOverrides] = useState<Record<string, PurposeOverride>>({});
+  const [blindReviewEnabled, setBlindReviewEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -526,6 +527,7 @@ export function FieldMappingBuilder({
           if (settings?.colors) setColors({ ...DEFAULT_COLORS, ...settings.colors });
           pinnedFieldKeys = settings?.pinnedFieldKeys ?? [];
           if (settings?.purposeOverrides) setPurposeOverrides(settings.purposeOverrides);
+          setBlindReviewEnabled(settings?.blindReview === true);
         }
         if (d.viewSections?.length > 0) {
           setSections(
@@ -780,6 +782,12 @@ export function FieldMappingBuilder({
         <p className="mb-3 text-sm text-zinc-600">
           Customize purpose labels and descriptions. Mark purposes as <strong>editable</strong> to allow reviewers to change values (writes to Smartsheet). If a purpose is editable, all roles can edit fields with that purpose.
         </p>
+        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${blindReviewEnabled ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
+          Blind review is <strong>{blindReviewEnabled ? "ON" : "OFF"}</strong>.
+          {blindReviewEnabled
+            ? " Fields marked Identity or Subtitle will be hidden from reviewers."
+            : " Identity and Subtitle fields will remain visible to reviewers unless you enable blind review on the cycle page."}
+        </div>
         <div className="mb-4 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-2">
           {PURPOSES.map((p) => (
             <div key={p.value} className="flex flex-col gap-1.5 rounded border border-zinc-200 bg-white p-2">
@@ -932,6 +940,11 @@ export function FieldMappingBuilder({
                       ));
                     })()}
                   </select>
+                  {blindReviewEnabled && (m.purpose === "identity" || m.purpose === "subtitle") && (
+                    <span className="text-[11px] text-amber-700">
+                      Hidden from reviewers while blind review is enabled.
+                    </span>
+                  )}
                 </div>
                 <input
                   type="text"

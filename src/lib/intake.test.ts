@@ -122,6 +122,9 @@ describe("intake helpers", () => {
       expect(buildBlobPathname("cycle-1", "submission-1", "resume", " Final CV (v2).PDF ")).toBe(
         "intake/cycle-1/submission-1/resume/Final-CV-v2.pdf"
       );
+      expect(
+        buildBlobPathname("cycle-1", "submission-1", "resume", " Final CV (v2).PDF ", "upload 1")
+      ).toBe("intake/cycle-1/submission-1/resume/upload-1-Final-CV-v2.pdf");
     });
   });
 
@@ -237,6 +240,100 @@ describe("intake helpers", () => {
 
       expect(result).toEqual({ success: true, rowId: 777, status: 201 });
       expect(addRowMock).not.toHaveBeenCalled();
+    });
+
+    it("persists multiple files for one field when the field allows multiple uploads", async () => {
+      const snapshot = {
+        title: "Intake Form",
+        fields: [
+          {
+            field_key: "supporting_docs",
+            label: "Supporting documents",
+            field_type: "file",
+            required: true,
+            settings_json: { multiple: true },
+          },
+        ],
+      };
+
+      headMock.mockImplementation(async (pathname: string) => ({
+        pathname,
+        url: `https://blob.example/${pathname}`,
+        contentType: "application/pdf",
+        size: 123,
+      }));
+
+      queryMock.mockImplementation((sql: string) => {
+        if (sql.includes("SELECT id, status, smartsheet_row_id, request_cells_json, request_files_json FROM intake_submissions")) {
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        }
+        if (sql.includes("SELECT id FROM intake_forms WHERE cycle_id = $1")) {
+          return Promise.resolve({ rows: [{ id: "form-1" }], rowCount: 1 });
+        }
+        if (sql.includes("INSERT INTO intake_submissions")) {
+          return Promise.resolve({ rows: [{ id: "submission-row-3" }], rowCount: 1 });
+        }
+        if (sql.includes("SELECT snapshot_json FROM intake_form_versions")) {
+          return Promise.resolve({ rows: [{ snapshot_json: snapshot }], rowCount: 1 });
+        }
+        if (sql.includes("UPDATE intake_submissions SET request_cells_json = $1")) {
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (sql.includes("SELECT connection_id, sheet_id FROM scholarship_cycles")) {
+          return Promise.resolve({ rows: [{ connection_id: "conn-1", sheet_id: 55 }], rowCount: 1 });
+        }
+        if (sql.includes("SELECT encrypted_credentials FROM connections")) {
+          return Promise.resolve({ rows: [{ encrypted_credentials: "ciphertext" }], rowCount: 1 });
+        }
+        if (sql.includes("UPDATE intake_submissions SET status = 'row_created'")) {
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (sql.includes("SELECT blob_pathname FROM intake_submission_files")) {
+          return Promise.resolve({ rows: [], rowCount: 0 });
+        }
+        if (sql.includes("INSERT INTO intake_submission_files")) {
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (sql.includes("UPDATE intake_submissions SET status = 'completed'")) {
+          return Promise.resolve({ rows: [], rowCount: 1 });
+        }
+        if (sql.includes("count(*)")) {
+          return Promise.resolve({ rows: [{ count: "0" }], rowCount: 1 });
+        }
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      });
+
+      const result = await processSubmission({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        formVersionId: "version-1",
+        submitterEmail: "staff@wsu.edu",
+        fields: {},
+        files: [
+          {
+            fieldKey: "supporting_docs",
+            uploadId: "file-one",
+            blobPathname: "intake/cycle-1/submission-1/supporting_docs/file-one-doc1.pdf",
+            originalFilename: "doc1.pdf",
+            contentType: "application/pdf",
+            sizeBytes: 123,
+          },
+          {
+            fieldKey: "supporting_docs",
+            uploadId: "file-two",
+            blobPathname: "intake/cycle-1/submission-1/supporting_docs/file-two-doc2.pdf",
+            originalFilename: "doc2.pdf",
+            contentType: "application/pdf",
+            sizeBytes: 123,
+          },
+        ],
+        ip: "1.2.3.4",
+      });
+
+      expect(result).toEqual({ success: true, rowId: 999, status: 201 });
+      expect(
+        queryMock.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO intake_submission_files")).length
+      ).toBe(2);
     });
   });
 });

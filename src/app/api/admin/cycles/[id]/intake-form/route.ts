@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
+import { sanitizeRichTextHtml } from "@/lib/rich-text";
 import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
@@ -118,6 +119,7 @@ export async function PATCH(
 
   const body = await request.json();
   const { title, instructions_text, opens_at, closes_at, status } = body;
+  const sanitizedInstructions = sanitizeRichTextHtml(instructions_text);
 
   const { rows: updated } = await query<{ id: string }>(
     `UPDATE intake_forms 
@@ -129,7 +131,7 @@ export async function PATCH(
          updated_at = now()
      WHERE cycle_id = $6
      RETURNING id`,
-    [title, instructions_text, opens_at, closes_at, status, cycleId]
+    [title, sanitizedInstructions, opens_at, closes_at, status, cycleId]
   );
 
   if (updated.length === 0) {

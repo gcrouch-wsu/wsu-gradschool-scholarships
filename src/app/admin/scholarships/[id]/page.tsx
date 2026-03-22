@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageProgram } from "@/lib/admin";
 import { query } from "@/lib/db";
 import { AddCycleForm } from "./AddCycleForm";
+import { DeleteProgramButton } from "./DeleteProgramButton";
 import { ProgramAdminsSection } from "./ProgramAdminsSection";
 import { DeleteCycleButton } from "./cycles/[cycleId]/DeleteCycleButton";
 
@@ -54,8 +55,13 @@ export default async function ProgramDetailPage({
         <Link href="/admin/scholarships" className="text-sm text-zinc-600 hover:underline">
           ← Scholarships
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">{program.name}</h1>
-        <p className="text-sm text-zinc-500">{program.slug}</p>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-zinc-900">{program.name}</h1>
+            <p className="text-sm text-zinc-500">{program.slug}</p>
+          </div>
+          <DeleteProgramButton programId={id} programName={program.name} />
+        </div>
         {program.description && (
           <p className="mt-1 text-zinc-600">{program.description}</p>
         )}

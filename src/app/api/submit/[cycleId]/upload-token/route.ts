@@ -40,11 +40,14 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { submissionId, fieldKey, filename, contentType, sizeBytes, honeypot } = body;
+  const { submissionId, fieldKey, uploadId, filename, contentType, sizeBytes, honeypot } = body;
 
   // Validation
   if (!submissionId || !fieldKey || !filename || !contentType || !sizeBytes) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+  if (uploadId !== undefined && typeof uploadId !== "string") {
+    return NextResponse.json({ error: "Invalid upload ID" }, { status: 400 });
   }
   if (typeof honeypot === "string" && honeypot.trim() !== "") {
     return NextResponse.json({ error: "Upload rejected" }, { status: 400 });
@@ -91,7 +94,7 @@ export async function POST(
 
   // Generate token
   // 8.2: canonical upload pathname prefix
-  const pathname = buildBlobPathname(cycleId, submissionId, fieldKey, filename);
+  const pathname = buildBlobPathname(cycleId, submissionId, fieldKey, filename, uploadId);
 
   try {
     const token = await generateClientTokenFromReadWriteToken({

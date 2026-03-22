@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { put } from "@vercel/blob/client";
+import { sanitizeRichTextHtml } from "@/lib/rich-text";
 
 interface Field {
   field_key: string;
@@ -9,7 +10,7 @@ interface Field {
   help_text: string | null;
   field_type: string;
   required: boolean;
-  settings_json: any;
+  settings_json: Record<string, unknown>;
 }
 
 interface FormSchema {
@@ -27,11 +28,31 @@ interface FormSchema {
   };
 }
 
+interface UploadedFileEntry {
+  fieldKey: string;
+  uploadId: string;
+  blobPathname: string;
+  blobUrl: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
+function getStringValue(value: string | boolean | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+function getSelectOptions(field: Field): string[] {
+  const options = field.settings_json?.options;
+  if (!Array.isArray(options)) return [];
+  return options.filter((option): option is string => typeof option === "string");
+}
+
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [submissionId] = useState(() => crypto.randomUUID());
-  const [formData, setFormData] = useState<Record<string, any>>({});
-  const [files, setFiles] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, string | boolean>>({});
+  const [files, setFiles] = useState<Record<string, UploadedFileEntry[]>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -52,70 +73,107 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
       .finally(() => setLoading(false));
   }, [cycleId]);
 
-  const handleFileChange = async (fieldKey: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.type !== "application/pdf") {
-      alert("Only PDF files are allowed");
-      return;
-    }
-
-    if (file.size > (schema?.fileLimits.maxSizeBytes || 104857600)) {
-      alert("File size exceeds 100MB limit");
-      return;
-    }
+  const handleFileChange = async (fieldKey: string, allowMultiple: boolean, e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    const filesToUpload = allowMultiple ? selectedFiles : selectedFiles.slice(0, 1);
+    if (filesToUpload.length === 0) return;
 
     setUploading((current) => ({ ...current, [fieldKey]: true }));
     setError("");
 
     try {
-      // 1. Get upload token
-      const tokenRes = await fetch(`/api/submit/${cycleId}/upload-token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          submissionId,
-          fieldKey,
-          filename: file.name,
+      const uploadedEntries: UploadedFileEntry[] = [];
+
+      for (const file of filesToUpload) {
+        if (file.type !== "application/pdf") {
+          throw new Error("Only PDF files are allowed");
+        }
+
+        if (file.size > (schema?.fileLimits.maxSizeBytes || 104857600)) {
+          throw new Error("File size exceeds 100MB limit");
+        }
+
+        const uploadId = crypto.randomUUID();
+        const tokenRes = await fetch(`/api/submit/${cycleId}/upload-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            submissionId,
+            fieldKey,
+            uploadId,
+            filename: file.name,
+            contentType: file.type,
+            sizeBytes: file.size,
+            honeypot: getStringValue(formData._honeypot),
+          })
+        });
+
+        if (!tokenRes.ok) {
+          const d = await tokenRes.json();
+          throw new Error(d.error || "Failed to authorize upload");
+        }
+
+        const { token, pathname } = await tokenRes.json();
+
+        const blob = await put(pathname, file, {
+          access: "private",
+          token,
           contentType: file.type,
-          sizeBytes: file.size,
-          honeypot: formData._honeypot || "",
-        })
-      });
+          multipart: true,
+        });
 
-      if (!tokenRes.ok) {
-        const d = await tokenRes.json();
-        throw new Error(d.error || "Failed to authorize upload");
-      }
-
-      const { token, pathname } = await tokenRes.json();
-
-      // 2. Upload directly to Blob
-      const blob = await put(pathname, file, {
-        access: "private",
-        token,
-        contentType: file.type,
-        multipart: true,
-      });
-
-      setFiles((current) => ({
-        ...current,
-        [fieldKey]: {
+        uploadedEntries.push({
           fieldKey,
+          uploadId,
           blobPathname: blob.pathname,
           blobUrl: blob.url,
           originalFilename: file.name,
           contentType: file.type,
-          sizeBytes: file.size
-        }
+          sizeBytes: file.size,
+        });
+      }
+
+      setFiles((current) => ({
+        ...current,
+        [fieldKey]: allowMultiple
+          ? [...(current[fieldKey] || []), ...uploadedEntries]
+          : uploadedEntries,
       }));
     } catch (err: any) {
       setError(`Upload failed: ${err.message}`);
     } finally {
       setUploading((current) => ({ ...current, [fieldKey]: false }));
+      e.target.value = "";
     }
   };
+
+  async function removeUploadedFile(fieldKey: string, blobPathname: string) {
+    setError("");
+    try {
+      const res = await fetch(`/api/submit/${cycleId}/remove-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          submissionId,
+          fieldKey,
+          blobPathname,
+          honeypot: getStringValue(formData._honeypot),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to remove upload");
+      }
+
+      setFiles((current) => ({
+        ...current,
+        [fieldKey]: (current[fieldKey] || []).filter((file) => file.blobPathname !== blobPathname),
+      }));
+    } catch (err: any) {
+      setError(err.message || "Failed to remove upload");
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,10 +193,10 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         body: JSON.stringify({
           submissionId,
           formVersionId: schema?.formVersionId,
-          submitterEmail: formData._submitterEmail,
-          honeypot: formData._honeypot || "",
+          submitterEmail: getStringValue(formData._submitterEmail),
+          honeypot: getStringValue(formData._honeypot),
           fields: submissionFields,
-          files: Object.values(files)
+          files: Object.values(files).flat()
         })
       });
 
@@ -159,6 +217,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   if (loading) return <div className="p-8 text-center text-zinc-500">Loading form...</div>;
   if (error && !schema) return <div className="p-8 text-center text-red-600 font-medium">{error}</div>;
   if (!schema) return null;
+  const instructionsHtml = sanitizeRichTextHtml(schema.instructionsText);
 
   if (schema.status !== "open") {
     return (
@@ -196,8 +255,11 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
       <div className="mb-10 text-center">
         <img src="/wsu-logo.svg" alt="WSU Logo" className="mx-auto h-12 w-auto mb-6" />
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">{schema.title}</h1>
-        {schema.instructionsText && (
-          <p className="mt-4 text-lg text-zinc-600 whitespace-pre-wrap">{schema.instructionsText}</p>
+        {instructionsHtml && (
+          <div
+            className="mt-4 space-y-3 text-left text-base text-zinc-600"
+            dangerouslySetInnerHTML={{ __html: instructionsHtml }}
+          />
         )}
       </div>
 
@@ -220,7 +282,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                 type="email"
                 required
                 placeholder="your.name@wsu.edu"
-                value={formData._submitterEmail || ""}
+                value={getStringValue(formData._submitterEmail)}
                 onChange={(e) => setFormData({ ...formData, _submitterEmail: e.target.value })}
                 className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
               />
@@ -232,7 +294,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                 type="text"
                 tabIndex={-1}
                 autoComplete="off"
-                value={formData._honeypot || ""}
+                value={getStringValue(formData._honeypot)}
                 onChange={(e) => setFormData({ ...formData, _honeypot: e.target.value })}
               />
             </div>
@@ -242,6 +304,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
           {schema.fields.map((field) => {
             const id = `field_${field.field_key}`;
+            const fieldFiles = files[field.field_key] || [];
+            const allowMultiple = Boolean(field.settings_json?.multiple);
 
             return (
               <div key={field.field_key}>
@@ -255,7 +319,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     type={field.field_type === "email" ? "email" : field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
                     id={id}
                     required={field.required}
-                    value={formData[field.field_key] || ""}
+                    value={getStringValue(formData[field.field_key])}
                     onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
                     className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                   />
@@ -264,7 +328,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     id={id}
                     required={field.required}
                     rows={5}
-                    value={formData[field.field_key] || ""}
+                    value={getStringValue(formData[field.field_key])}
                     onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
                     className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                   />
@@ -272,12 +336,12 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                   <select
                     id={id}
                     required={field.required}
-                    value={formData[field.field_key] || ""}
+                    value={getStringValue(formData[field.field_key])}
                     onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
                     className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                   >
                     <option value="">— Select Option —</option>
-                    {(field.settings_json?.options || []).map((opt: string) => (
+                    {getSelectOptions(field).map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
@@ -297,19 +361,37 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     <input
                       type="file"
                       id={id}
-                      required={field.required && !files[field.field_key]}
+                      required={field.required && fieldFiles.length === 0}
                       accept=".pdf,application/pdf"
-                      onChange={(e) => handleFileChange(field.field_key, e)}
+                      multiple={allowMultiple}
+                      onChange={(e) => handleFileChange(field.field_key, allowMultiple, e)}
                       disabled={uploading[field.field_key]}
                       className="block w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200"
                     />
+                    <p className="mt-2 text-xs text-zinc-500">
+                      {allowMultiple ? "You may upload multiple PDF files for this question." : "Upload one PDF file for this question."}
+                    </p>
                     {uploading[field.field_key] && (
                       <p className="mt-2 text-xs text-blue-600 animate-pulse font-medium">Uploading to secure storage...</p>
                     )}
-                    {files[field.field_key] && (
-                      <p className="mt-2 text-xs text-green-600 font-medium">
-                        ✓ {files[field.field_key].originalFilename} uploaded
-                      </p>
+                    {fieldFiles.length > 0 && (
+                      <ul className="mt-3 space-y-2">
+                        {fieldFiles.map((file) => (
+                          <li
+                            key={file.blobPathname}
+                            className="flex items-center justify-between rounded border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700"
+                          >
+                            <span>Uploaded: {file.originalFilename}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeUploadedFile(field.field_key, file.blobPathname)}
+                              className="font-medium text-red-600 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 ) : null}

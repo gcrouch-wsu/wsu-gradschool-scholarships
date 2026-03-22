@@ -3,6 +3,10 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
+import {
+  reconcileCycleFieldMappings,
+  reconcileCycleIntakeMappings,
+} from "@/lib/schema-reconcile";
 
 export async function PATCH(
   request: NextRequest,
@@ -114,6 +118,26 @@ export async function PATCH(
       `UPDATE scholarship_cycles SET ${updates.join(", ")} WHERE id = $${i}`,
       values
     );
+    if (body.sheetSchemaSnapshot?.columns && Array.isArray(body.sheetSchemaSnapshot.columns)) {
+      const columns = body.sheetSchemaSnapshot.columns
+        .filter(
+          (column: unknown): column is { id: number; title: string; type?: string } =>
+            typeof column === "object" &&
+            column !== null &&
+            typeof (column as { id?: unknown }).id === "number" &&
+            typeof (column as { title?: unknown }).title === "string"
+        )
+        .map((column: { id: number; title: string; type?: string }) => ({
+          id: column.id,
+          title: column.title,
+          type: column.type,
+        }));
+
+      if (columns.length > 0) {
+        await reconcileCycleFieldMappings(id, columns);
+        await reconcileCycleIntakeMappings(id, columns);
+      }
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("unique") || msg.includes("duplicate")) {

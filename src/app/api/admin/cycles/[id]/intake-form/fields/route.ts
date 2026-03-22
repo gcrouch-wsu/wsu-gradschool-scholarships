@@ -72,6 +72,9 @@ export async function PUT(
       if (f.target_column_id || f.target_column_title || f.target_column_type) {
         return NextResponse.json({ error: `File field "${f.label}" cannot map directly to a Smartsheet column` }, { status: 400 });
       }
+      if (f.settings_json?.multiple !== undefined && typeof f.settings_json.multiple !== "boolean") {
+        return NextResponse.json({ error: `File field "${f.label}" has an invalid multiple-files setting` }, { status: 400 });
+      }
     } else {
       if (!f.target_column_id || !f.target_column_title || !f.target_column_type) {
         return NextResponse.json({ error: `Field "${f.label}" is missing a target column mapping` }, { status: 400 });

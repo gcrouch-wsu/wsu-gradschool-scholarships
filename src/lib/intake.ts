@@ -33,6 +33,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_SIGNED_URL_TTL_MS = 5 * 60 * 1000;
 const BLOB_FILENAME_SAFE_CHARS = /[^A-Za-z0-9._-]+/g;
+const BLOB_PATH_SAFE_CHARS = /[^A-Za-z0-9_-]+/g;
 
 type IntakeFieldType = (typeof INTAKE_ALLOWED_FIELD_TYPES)[number];
 type IntakeColumnType = (typeof INTAKE_ALLOWED_COLUMN_TYPES)[number];
@@ -68,6 +69,7 @@ export interface PublishedIntakeSnapshot {
 
 interface UploadedFileInput {
   fieldKey: string;
+  uploadId?: string;
   blobPathname?: string;
   blobUrl?: string;
   originalFilename: string;
@@ -77,6 +79,7 @@ interface UploadedFileInput {
 
 interface VerifiedUploadedFile {
   fieldKey: string;
+  uploadId?: string;
   blobPathname: string;
   blobUrl: string;
   originalFilename: string;
@@ -160,6 +163,10 @@ function getFieldOptions(field: PublishedIntakeField): string[] {
   return options.filter((option): option is string => typeof option === "string");
 }
 
+function allowsMultipleFiles(field: PublishedIntakeField): boolean {
+  return field.field_type === "file" && field.settings_json?.multiple === true;
+}
+
 function parseStoredRowId(value: number | string | null): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -235,6 +242,7 @@ function normalizeFileInput(value: unknown): UploadedFileInput | null {
 
   return {
     fieldKey: value.fieldKey,
+    uploadId: typeof value.uploadId === "string" ? value.uploadId : undefined,
     blobPathname:
       typeof value.blobPathname === "string"
         ? value.blobPathname
@@ -360,16 +368,25 @@ async function verifyUploadedFiles(args: {
 
   const fileFields = args.snapshot.fields.filter((field) => field.field_type === "file");
   const fileFieldsByKey = new Map(fileFields.map((field) => [field.field_key, field]));
-  const seenKeys = new Set<string>();
+  const seenKeys = new Map<string, number>();
+  const seenBlobPathnames = new Set<string>();
 
   for (const file of fileInputs) {
     if (!fileFieldsByKey.has(file.fieldKey)) {
       return { ok: false, error: `Unexpected file upload for field "${file.fieldKey}"` };
     }
-    if (seenKeys.has(file.fieldKey)) {
+    if (file.blobPathname && seenBlobPathnames.has(file.blobPathname)) {
+      return { ok: false, error: `Duplicate upload detected for field "${file.fieldKey}"` };
+    }
+    if (file.blobPathname) {
+      seenBlobPathnames.add(file.blobPathname);
+    }
+
+    const nextCount = (seenKeys.get(file.fieldKey) ?? 0) + 1;
+    seenKeys.set(file.fieldKey, nextCount);
+    if (nextCount > 1 && !allowsMultipleFiles(fileFieldsByKey.get(file.fieldKey)!)) {
       return { ok: false, error: `Only one file is allowed for field "${file.fieldKey}"` };
     }
-    seenKeys.add(file.fieldKey);
   }
 
   for (const field of fileFields) {
@@ -416,6 +433,7 @@ async function verifyUploadedFiles(args: {
 
     verifiedFiles.push({
       fieldKey: file.fieldKey,
+      uploadId: file.uploadId,
       blobPathname: blobMeta.pathname,
       blobUrl: blobMeta.url,
       originalFilename: file.originalFilename,
@@ -442,13 +460,25 @@ export function sanitizeBlobFilename(filename: string): string {
   return `${base}.${ext}`;
 }
 
+export function sanitizeBlobPathSegment(segment: string): string {
+  return segment
+    .replace(BLOB_PATH_SAFE_CHARS, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "upload";
+}
+
 export function buildBlobPathname(
   cycleId: string,
   submissionId: string,
   fieldKey: string,
-  filename: string
+  filename: string,
+  uploadId?: string
 ): string {
-  return `intake/${cycleId}/${submissionId}/${fieldKey}/${sanitizeBlobFilename(filename)}`;
+  const safeFilename = sanitizeBlobFilename(filename);
+  if (!uploadId) {
+    return `intake/${cycleId}/${submissionId}/${fieldKey}/${safeFilename}`;
+  }
+  return `intake/${cycleId}/${submissionId}/${fieldKey}/${sanitizeBlobPathSegment(uploadId)}-${safeFilename}`;
 }
 
 export function createSignedIntakeFileUrl(fileId: string, expiresAt = Date.now() + DEFAULT_SIGNED_URL_TTL_MS): string {
@@ -825,16 +855,15 @@ export async function processSubmission(params: {
       );
     }
 
-    const requiredFileCount = payloadValidation.normalizedFiles.length;
-    if (requiredFileCount > 0) {
-      const { rows: existingFiles } = await query<{ field_key: string }>(
-        "SELECT field_key FROM intake_submission_files WHERE submission_id = $1",
+    if (payloadValidation.normalizedFiles.length > 0) {
+      const { rows: existingFiles } = await query<{ blob_pathname: string }>(
+        "SELECT blob_pathname FROM intake_submission_files WHERE submission_id = $1",
         [params.submissionId]
       );
-      const existingFieldKeys = new Set(existingFiles.map((file) => file.field_key));
+      const existingBlobPathnames = new Set(existingFiles.map((file) => file.blob_pathname));
 
       for (const file of payloadValidation.normalizedFiles) {
-        if (existingFieldKeys.has(file.fieldKey)) continue;
+        if (existingBlobPathnames.has(file.blobPathname)) continue;
 
         await query(
           `INSERT INTO intake_submission_files (
@@ -853,10 +882,13 @@ export async function processSubmission(params: {
             rowId,
           ]
         );
-        existingFieldKeys.add(file.fieldKey);
+        existingBlobPathnames.add(file.blobPathname);
       }
 
-      if (existingFieldKeys.size !== requiredFileCount) {
+      const allRequiredFilesPersisted = payloadValidation.normalizedFiles.every((file) =>
+        existingBlobPathnames.has(file.blobPathname)
+      );
+      if (!allRequiredFilesPersisted) {
         throw new Error("Not all uploaded files were persisted for this submission");
       }
     }
