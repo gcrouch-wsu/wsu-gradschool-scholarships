@@ -220,8 +220,8 @@ export default async function CycleDetailPage({
           {viewConfigs.length > 0 ? (
             <BlindReviewToggle cycleId={cycleId} blindReview={blindReview} />
           ) : (
-            <span className="text-sm text-zinc-500" title="Configure fields & layout first">
-              Blind review (configure fields first)
+            <span className="text-sm text-zinc-500" title="Configure reviewer form first">
+              Blind review (configure reviewer form first)
             </span>
           )}
           <ExternalReviewersToggle
@@ -269,7 +269,7 @@ export default async function CycleDetailPage({
               3. Build intake form (optional — skip if using external intake)
             </SetupStep>
             <SetupStep done={fieldConfigs.length > 0}>
-              4. Configure fields & layout (map columns, set labels, publish)
+              4. Configure reviewer form (map columns, set labels, publish)
             </SetupStep>
             <SetupStep done={!!cycleWithPublished[0]?.published_config_version_id}>
               5. Publish configuration (make it live for reviewers)
@@ -359,25 +359,27 @@ export default async function CycleDetailPage({
 
         <section className="rounded-lg border border-zinc-200 bg-white p-5">
           <h2 className="text-lg font-medium text-zinc-900">
-            Fields & layout (what reviewers see)
+            Reviewer intake form
           </h2>
           <p className="mt-1 text-sm text-zinc-600">
-            Map Smartsheet columns to fields, set labels, visibility, and edit permissions per role. Drag to reorder. Save your changes, then publish to make them live for reviewers.
+            Build the reviewer-facing form. Map Smartsheet columns, set labels and visibility, and control the live reviewer layout.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               href={`/admin/scholarships/${programId}/cycles/${cycleId}/builder`}
               className="inline-flex items-center gap-2 rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
             >
-              Configure fields & layout
+              Edit reviewer form
               <span aria-hidden>→</span>
             </Link>
-            <Link
-              href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
-              className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              Preview as reviewer
-            </Link>
+            {fieldConfigs.length > 0 && (
+              <Link
+                href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
+                className="text-blue-600 hover:underline"
+              >
+                {cycleWithPublished[0]?.published_config_version_id ? "View live form" : "View current form"}
+              </Link>
+            )}
             <PublishConfigButton
               cycleId={cycleId}
               latestConfigId={latestConfig[0]?.id ?? null}

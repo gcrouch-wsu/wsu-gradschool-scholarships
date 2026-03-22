@@ -81,7 +81,7 @@ export function RowLayoutEditor({
                   <h4 className="text-sm font-medium text-zinc-900">{section.label}</h4>
                   <p className="text-xs text-zinc-500">{section.section_key}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => onChange(addDraftRowToSection(layout, section.section_key, "full"))}
@@ -95,6 +95,13 @@ export function RowLayoutEditor({
                     className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-white"
                   >
                     + Two columns
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange(addDraftRowToSection(layout, section.section_key, "three_up"))}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-white"
+                  >
+                    + Three columns
                   </button>
                 </div>
               </div>
@@ -130,6 +137,17 @@ export function RowLayoutEditor({
                           >
                             2 col
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => onChange(setDraftRowMode(layout, section.section_key, row.row_key, "three_up"))}
+                            className={`rounded px-2 py-1 ${
+                              row.mode === "three_up"
+                                ? "bg-white text-zinc-900 shadow-sm"
+                                : "text-zinc-600 hover:bg-white"
+                            }`}
+                          >
+                            3 col
+                          </button>
                         </div>
                         <button
                           type="button"
@@ -155,13 +173,27 @@ export function RowLayoutEditor({
                       </div>
                     </div>
 
-                    <div className={row.mode === "two_up" ? "grid gap-3 md:grid-cols-2" : "space-y-3"}>
+                    <div
+                      className={
+                        row.mode === "three_up"
+                          ? "grid gap-3 md:grid-cols-3"
+                          : row.mode === "two_up"
+                            ? "grid gap-3 md:grid-cols-2"
+                            : "space-y-3"
+                      }
+                    >
                       {row.items.map((item, slotIndex) => {
                         const selectedField = item.field_key ? fieldMap.get(item.field_key) : null;
                         return (
                           <div key={item.item_key} className="rounded border border-zinc-200 bg-zinc-50 p-3">
                             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                              {row.mode === "two_up" ? (slotIndex === 0 ? "Left column" : "Right column") : "Full width"}
+                              {row.mode === "three_up"
+                                ? `Column ${slotIndex + 1}`
+                                : row.mode === "two_up"
+                                  ? slotIndex === 0
+                                    ? "Left column"
+                                    : "Right column"
+                                  : "Full width"}
                             </div>
                             <select
                               value={item.field_key ?? ""}
@@ -189,7 +221,7 @@ export function RowLayoutEditor({
                             {selectedField && (
                               <p className="mt-2 text-xs text-zinc-500">
                                 {selectedField.label}
-                                {selectedField.badge ? ` • ${selectedField.badge}` : ""}
+                                {selectedField.badge ? ` - ${selectedField.badge}` : ""}
                               </p>
                             )}
                           </div>
@@ -201,7 +233,7 @@ export function RowLayoutEditor({
 
                 {(layoutSection?.rows ?? []).length === 0 && (
                   <div className="rounded border border-dashed border-zinc-300 bg-white px-4 py-6 text-center text-sm text-zinc-400">
-                    No rows yet. Add a full row or a two-column row for this section.
+                    No rows yet. Add a full row, two-column row, or three-column row for this section.
                   </div>
                 )}
               </div>

@@ -504,3 +504,56 @@ export async function POST(
 
   return NextResponse.json({ success: true });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id: cycleId } = await params;
+  const canManage = await canManageCycle(user.id, user.is_platform_admin, cycleId);
+  if (!canManage) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { rows: existing } = await query<{ id: string }>(
+    "SELECT id FROM field_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  if (existing.length === 0) {
+    return NextResponse.json({ error: "Reviewer form is already empty" }, { status: 404 });
+  }
+
+  await withTransaction(async (tx) => {
+    await tx(
+      "UPDATE scholarship_cycles SET published_config_version_id = NULL, updated_at = now() WHERE id = $1",
+      [cycleId]
+    );
+    await tx(
+      "DELETE FROM config_versions WHERE cycle_id = $1",
+      [cycleId]
+    );
+    await tx(
+      `DELETE FROM field_permissions
+       WHERE field_config_id IN (SELECT id FROM field_configs WHERE cycle_id = $1)`,
+      [cycleId]
+    );
+    await tx("DELETE FROM view_configs WHERE cycle_id = $1", [cycleId]);
+    await tx("DELETE FROM field_configs WHERE cycle_id = $1", [cycleId]);
+  });
+
+  await logAudit({
+    actorUserId: user.id,
+    cycleId,
+    actionType: "cycle.config_deleted",
+    targetType: "cycle",
+    targetId: cycleId,
+    metadata: {},
+  });
+
+  return NextResponse.json({ success: true });
+}

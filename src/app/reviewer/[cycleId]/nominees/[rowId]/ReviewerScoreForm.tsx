@@ -328,7 +328,13 @@ export function ReviewerScoreForm({
     return (
       <div
         key={row.row_key}
-        className={row.fields.length === 2 ? "grid gap-4 md:grid-cols-2" : "space-y-4"}
+        className={
+          row.fields.length === 3
+            ? "grid gap-4 md:grid-cols-3"
+            : row.fields.length === 2
+              ? "grid gap-4 md:grid-cols-2"
+              : "space-y-4"
+        }
       >
         {row.fields.map((field) =>
           field.canEdit ? renderEditableField(field) : renderReadOnlyField(field)

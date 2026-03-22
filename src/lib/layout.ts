@@ -1,6 +1,6 @@
 export const LAYOUT_VERSION = 1 as const;
 
-export type LayoutWidth = "full" | "half";
+export type LayoutWidth = "full" | "half" | "third";
 
 export interface SavedLayoutItem {
   item_key: string;
@@ -274,7 +274,11 @@ export function validateLayoutJson(
         if (pinnedFieldKeys.has(rawItem.field_key)) {
           return { ok: false, error: `Pinned field "${rawItem.field_key}" cannot appear inside section rows` };
         }
-        if (rawItem.width !== "full" && rawItem.width !== "half") {
+        if (
+          rawItem.width !== "full" &&
+          rawItem.width !== "half" &&
+          rawItem.width !== "third"
+        ) {
           return {
             ok: false,
             error: `Field "${rawItem.field_key}" in row "${rawRow.row_key}" has invalid width`,
@@ -292,11 +296,17 @@ export function validateLayoutJson(
       const widths = normalizedItems.map((item) => item.width);
       const validRow =
         (normalizedItems.length === 1 && widths[0] === "full") ||
-        (normalizedItems.length === 2 && widths[0] === "half" && widths[1] === "half");
+        (normalizedItems.length === 2 && widths[0] === "half" && widths[1] === "half") ||
+        (
+          normalizedItems.length === 3 &&
+          widths[0] === "third" &&
+          widths[1] === "third" &&
+          widths[2] === "third"
+        );
       if (!validRow) {
         return {
           ok: false,
-          error: `Row "${rawRow.row_key}" must be either one full item or two half items`,
+          error: `Row "${rawRow.row_key}" must be either one full item, two half items, or three third items`,
         };
       }
 

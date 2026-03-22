@@ -328,6 +328,13 @@ function LayoutPreview({
         </div>
       );
     }
+    if (row.fields.length === 3) {
+      return (
+        <div key={row.row_key} className="grid gap-3 md:grid-cols-3">
+          {row.fields.map(renderField)}
+        </div>
+      );
+    }
     return (
       <div key={row.row_key} className="space-y-3">
         {row.fields.map(renderField)}
@@ -547,6 +554,7 @@ export function FieldMappingBuilder({
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
   const historyRef = useRef<MappedField[][]>([]);
@@ -805,6 +813,35 @@ export function FieldMappingBuilder({
       setError("An error occurred");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteConfig() {
+    if (
+      !confirm(
+        "Delete this reviewer form? This removes the current reviewer mapping, layout, and saved config versions for this cycle. Smartsheet data will not be deleted."
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/builder`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Failed to delete reviewer form");
+        return;
+      }
+      router.push(`/admin/scholarships/${programId}/cycles/${cycleId}`);
+      router.refresh();
+    } catch {
+      setError("Failed to delete reviewer form");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -1073,7 +1110,7 @@ export function FieldMappingBuilder({
 
       <AccordionCard title="Layout">
         <p className="mb-3 text-sm text-zinc-600">
-          How the reviewer form is organized. The preview below updates when you change this.
+          How the reviewer form is organized for live reviewers.
         </p>
         <div className="flex flex-wrap gap-3">
           {LAYOUTS.map((l) => (
@@ -1148,7 +1185,7 @@ export function FieldMappingBuilder({
           sections={sections}
           onChange={setLayoutDraft}
           title="Reviewer rows"
-          description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field or two side-by-side fields."
+          description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field, two side-by-side fields, or three compact fields."
         />
       </AccordionCard>
 
@@ -1193,21 +1230,6 @@ export function FieldMappingBuilder({
         </AccordionCard>
       )}
 
-      <AccordionCard title="Preview">
-        <p className="mb-3 text-sm text-zinc-600">
-          Preview updates when you change the layout template. Score dropdowns show options from the Smartsheet column.
-        </p>
-        <LayoutPreview
-          mapped={mapped}
-          viewType={viewType}
-          columns={columns}
-          sections={sections}
-          colors={colors}
-          layoutJson={normalizeDraftLayout(layoutDraft, sections)}
-          blindReviewEnabled={blindReviewEnabled}
-        />
-      </AccordionCard>
-
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -1217,11 +1239,11 @@ export function FieldMappingBuilder({
         <p className="text-sm text-green-600">Saved at {lastSavedAt}</p>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || deleting}
           className="rounded bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save configuration"}
@@ -1229,17 +1251,31 @@ export function FieldMappingBuilder({
         <button
           type="button"
           onClick={undo}
-          disabled={!canUndo}
+          disabled={!canUndo || deleting}
           className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
         >
           Undo
         </button>
+        <Link
+          href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
+          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        >
+          View live form
+        </Link>
         <Link
           href={`/admin/scholarships/${programId}/cycles/${cycleId}`}
           className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
         >
           Back to cycle
         </Link>
+        <button
+          type="button"
+          onClick={handleDeleteConfig}
+          disabled={deleting || saving}
+          className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+        >
+          {deleting ? "Deleting..." : "Delete reviewer form"}
+        </button>
       </div>
     </div>
   );

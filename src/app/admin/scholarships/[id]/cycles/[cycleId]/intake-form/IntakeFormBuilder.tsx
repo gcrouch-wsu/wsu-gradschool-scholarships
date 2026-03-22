@@ -581,7 +581,7 @@ export default function IntakeFormBuilder({
               sections={INTAKE_LAYOUT_SECTIONS}
               onChange={setLayoutDraft}
               title="Desktop layout"
-              description="Arrange questions into exact desktop rows. A row can be one full-width field or two side-by-side fields. Mobile still stacks everything in one column."
+              description="Arrange questions into exact desktop rows. A row can be one full-width field, two side-by-side fields, or three compact fields. Mobile still stacks everything in one column."
             />
           )}
 

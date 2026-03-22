@@ -279,7 +279,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <div className="mb-10 text-center">
-        <img src="/wsu-logo.svg" alt="WSU Logo" className="mx-auto h-12 w-auto mb-6" />
+        <img src="/wsu-logo.png" alt="WSU Graduate School" className="mx-auto mb-6 h-12 w-auto" />
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">{schema.title}</h1>
         {instructionsHtml && (
           <div
@@ -334,8 +334,10 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
               <div
                 key={row.row_key}
                 className={
-                  rowFields.length === 2
-                    ? "grid gap-6 md:col-span-2 md:grid-cols-2"
+                  rowFields.length === 3
+                    ? "grid gap-6 md:col-span-2 md:grid-cols-3"
+                    : rowFields.length === 2
+                      ? "grid gap-6 md:col-span-2 md:grid-cols-2"
                     : "md:col-span-2"
                 }
               >

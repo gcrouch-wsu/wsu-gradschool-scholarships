@@ -98,4 +98,45 @@ describe("layout runtime helpers", () => {
       "major",
     ]);
   });
+
+  it("preserves three-column rows at runtime", () => {
+    const layout = {
+      version: 1 as const,
+      sections: [
+        {
+          section_key: "main",
+          label: "Main",
+          sort_order: 0,
+          rows: [
+            {
+              row_key: "row_1",
+              items: [
+                { item_key: "item_1", field_key: "email", width: "third" as const },
+                { item_key: "item_2", field_key: "student_id", width: "third" as const },
+                { item_key: "item_3", field_key: "term", width: "third" as const },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const bound = bindFieldsToLayout({
+      layoutJson: layout,
+      fields: [
+        { fieldKey: "email", label: "Email" },
+        { fieldKey: "student_id", label: "Student ID" },
+        { fieldKey: "term", label: "Term" },
+      ],
+      getFieldKey: (field) => field.fieldKey,
+      sections: [{ section_key: "main", label: "Main", sort_order: 0 }],
+    });
+
+    expect(bound.sections[0]?.rows).toHaveLength(1);
+    expect(bound.sections[0]?.rows[0]?.fields.map((field) => field.fieldKey)).toEqual([
+      "email",
+      "student_id",
+      "term",
+    ]);
+  });
 });

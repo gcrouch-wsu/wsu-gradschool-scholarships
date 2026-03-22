@@ -53,11 +53,10 @@ export default async function BuilderPage({
         ← {program[0]?.name ?? "Program"} – {cycle.cycle_label}
       </Link>
       <h1 className="mt-4 text-2xl font-semibold text-zinc-900">
-        Field mapping & layout
+        Reviewer intake form
       </h1>
       <p className="mt-1 text-sm text-zinc-600">
-        Map Smartsheet columns to identity, narrative, score, and comments. Set
-        display labels, role visibility, and layout.
+        Configure the reviewer-facing form. Map Smartsheet columns, define field behavior, and control the live layout reviewers will see.
       </p>
 
       {!hasSchema ? (

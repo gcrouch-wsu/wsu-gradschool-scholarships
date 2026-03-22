@@ -1,12 +1,12 @@
 import type { SavedLayoutJson, SavedLayoutSection, SavedLayoutRow, SavedLayoutItem } from "./layout";
 import { LAYOUT_VERSION } from "./layout";
 
-export type DraftRowMode = "full" | "two_up";
+export type DraftRowMode = "full" | "two_up" | "three_up";
 
 export interface DraftLayoutItem {
   item_key: string;
   field_key: string | null;
-  width: "full" | "half";
+  width: "full" | "half" | "third";
 }
 
 export interface DraftLayoutRow {
@@ -71,7 +71,10 @@ export function cloneDraftLayout(layout: DraftLayoutJson): DraftLayoutJson {
   };
 }
 
-function createDraftItem(width: "full" | "half", fieldKey: string | null = null): DraftLayoutItem {
+function createDraftItem(
+  width: "full" | "half" | "third",
+  fieldKey: string | null = null
+): DraftLayoutItem {
   return {
     item_key: nextKey("item"),
     field_key: fieldKey,
@@ -80,17 +83,29 @@ function createDraftItem(width: "full" | "half", fieldKey: string | null = null)
 }
 
 export function createDraftRow(mode: DraftRowMode = "full"): DraftLayoutRow {
-  return mode === "full"
-    ? {
-        row_key: nextKey("row"),
-        mode,
-        items: [createDraftItem("full")],
-      }
-    : {
-        row_key: nextKey("row"),
-        mode,
-        items: [createDraftItem("half"), createDraftItem("half")],
-      };
+  if (mode === "full") {
+    return {
+      row_key: nextKey("row"),
+      mode,
+      items: [createDraftItem("full")],
+    };
+  }
+  if (mode === "two_up") {
+    return {
+      row_key: nextKey("row"),
+      mode,
+      items: [createDraftItem("half"), createDraftItem("half")],
+    };
+  }
+  return {
+    row_key: nextKey("row"),
+    mode,
+    items: [
+      createDraftItem("third"),
+      createDraftItem("third"),
+      createDraftItem("third"),
+    ],
+  };
 }
 
 export function createDraftLayout(
@@ -118,7 +133,12 @@ export function createDraftLayout(
         rawSection.section_key,
         rawSection.rows.map((row) => ({
           row_key: row.row_key,
-          mode: row.items.length === 2 ? "two_up" : "full",
+          mode:
+            row.items.length === 3
+              ? "three_up"
+              : row.items.length === 2
+                ? "two_up"
+                : "full",
           items: row.items.map((item) => ({
             item_key: item.item_key,
             field_key: item.field_key,
@@ -344,10 +364,16 @@ export function setDraftRowMode(
   row.items =
     mode === "full"
       ? [createDraftItem("full", existingFieldKeys[0] ?? null)]
-      : [
-          createDraftItem("half", existingFieldKeys[0] ?? null),
-          createDraftItem("half", existingFieldKeys[1] ?? null),
-        ];
+      : mode === "two_up"
+        ? [
+            createDraftItem("half", existingFieldKeys[0] ?? null),
+            createDraftItem("half", existingFieldKeys[1] ?? null),
+          ]
+        : [
+            createDraftItem("third", existingFieldKeys[0] ?? null),
+            createDraftItem("third", existingFieldKeys[1] ?? null),
+            createDraftItem("third", existingFieldKeys[2] ?? null),
+          ];
   return next;
 }
 
@@ -404,12 +430,24 @@ export function normalizeDraftLayout(
         continue;
       }
 
+      if (filledItems.length === 2) {
+        normalizedRows.push({
+          row_key: row.row_key,
+          items: filledItems.slice(0, 2).map((item) => ({
+            item_key: item.item_key,
+            field_key: item.field_key,
+            width: "half",
+          })),
+        });
+        continue;
+      }
+
       normalizedRows.push({
         row_key: row.row_key,
-        items: filledItems.slice(0, 2).map((item) => ({
+        items: filledItems.slice(0, 3).map((item) => ({
           item_key: item.item_key,
           field_key: item.field_key,
-          width: "half",
+          width: "third",
         })),
       });
     }

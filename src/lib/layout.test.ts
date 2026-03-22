@@ -177,7 +177,37 @@ describe("layout helpers", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: 'Row "row_1" must be either one full item or two half items',
+      error: 'Row "row_1" must be either one full item, two half items, or three third items',
     });
+  });
+
+  it("accepts valid three-column rows", () => {
+    const result = validateLayoutJson(
+      {
+        version: 1,
+        sections: [
+          {
+            section_key: "main",
+            label: "Main",
+            sort_order: 0,
+            rows: [
+              {
+                row_key: "row_1",
+                items: [
+                  { item_key: "item_1", field_key: "email", width: "third" },
+                  { item_key: "item_2", field_key: "student_id", width: "third" },
+                  { item_key: "item_3", field_key: "term", width: "third" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        knownFieldKeys: ["email", "student_id", "term"],
+      }
+    );
+
+    expect(result.ok).toBe(true);
   });
 });
