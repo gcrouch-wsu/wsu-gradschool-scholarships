@@ -1,5 +1,3 @@
-import { randomUUID } from "crypto";
-
 export const LAYOUT_VERSION = 1 as const;
 
 export type LayoutWidth = "full" | "half";
@@ -58,11 +56,11 @@ type ValidateLayoutResult =
   | { ok: false; error: string };
 
 function nextRowKey() {
-  return `row_${randomUUID()}`;
+  return `row_${crypto.randomUUID()}`;
 }
 
 function nextItemKey() {
-  return `item_${randomUUID()}`;
+  return `item_${crypto.randomUUID()}`;
 }
 
 function sortByOrder<T extends { sort_order?: number | null }>(items: T[]): T[] {

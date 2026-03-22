@@ -3,6 +3,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { RowLayoutEditor } from "@/components/layout/RowLayoutEditor";
+import type { SavedLayoutJson } from "@/lib/layout";
+import type { DraftLayoutJson } from "@/lib/layout-editor";
+import {
+  appendFieldAsFullRow,
+  createDraftLayout,
+  getFieldSectionKey,
+  normalizeDraftLayout,
+  removeFieldFromDraftLayout,
+  syncDraftLayoutSections,
+} from "@/lib/layout-editor";
+import { bindFieldsToLayout } from "@/lib/layout-runtime";
 
 /**
  * Purpose = how this field is used in the reviewer UI (app-layer concept).
@@ -189,6 +201,7 @@ function LayoutPreview({
   columns,
   sections,
   colors,
+  layoutJson,
   blindReviewEnabled,
 }: {
   mapped: MappedField[];
@@ -196,6 +209,7 @@ function LayoutPreview({
   columns: Column[];
   sections: ViewSection[];
   colors: LayoutColors;
+  layoutJson: SavedLayoutJson;
   blindReviewEnabled?: boolean;
 }) {
   const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
@@ -218,13 +232,15 @@ function LayoutPreview({
     return <p className="text-sm text-zinc-500">No fields mapped yet.</p>;
   }
 
-  const pinnedFields = previewMapped.filter((m) => m.pinned);
-  const unpinned = previewMapped.filter((m) => !m.pinned);
-
-  const fieldsBySection = tabList.reduce((acc, s) => {
-    acc[s.section_key] = unpinned.filter((m) => (m.sectionKey || tabList[0]?.section_key) === s.section_key);
-    return acc;
-  }, {} as Record<string, MappedField[]>);
+  const boundLayout = bindFieldsToLayout({
+    layoutJson,
+    fields: previewMapped,
+    getFieldKey: (field) => field.fieldKey,
+    sections: tabList,
+    pinnedFieldKeys: layoutJson.pinned_field_keys ?? [],
+  });
+  const pinnedFields = boundLayout.pinnedFields;
+  const sectionsWithRows = boundLayout.sections;
 
   const PinnedCard = pinnedFields.length > 0 ? (
     <div
@@ -304,8 +320,24 @@ function LayoutPreview({
     );
   }
 
+  function renderRow(row: { row_key: string; fields: MappedField[] }) {
+    if (row.fields.length === 2) {
+      return (
+        <div key={row.row_key} className="grid gap-3 md:grid-cols-2">
+          {row.fields.map(renderField)}
+        </div>
+      );
+    }
+    return (
+      <div key={row.row_key} className="space-y-3">
+        {row.fields.map(renderField)}
+      </div>
+    );
+  }
+
   if (viewType === "tabbed") {
-    const activeFields = fieldsBySection[activeTab] ?? [];
+    const activeSection = sectionsWithRows.find((section) => section.section_key === activeTab);
+    const activeRows = activeSection?.rows ?? [];
     return (
       <div>
       {PinnedCard}
@@ -329,8 +361,8 @@ function LayoutPreview({
           })}
         </div>
         <div className="p-4">
-          {activeFields.length > 0 ? (
-            <div className="space-y-3">{activeFields.map(renderField)}</div>
+          {activeRows.length > 0 ? (
+            <div className="space-y-3">{activeRows.map(renderRow)}</div>
           ) : (
             <p className="text-sm text-zinc-500">No fields in this tab</p>
           )}
@@ -345,15 +377,15 @@ function LayoutPreview({
       <div>
       {PinnedCard}
       <div className="space-y-2">
-        {tabList.map((s) => {
-          const sectionFields = fieldsBySection[s.section_key] ?? [];
+        {sectionsWithRows.map((s) => {
+          const sectionRows = s.rows ?? [];
           return (
             <details key={s.section_key} className="rounded border border-zinc-200 bg-white">
               <summary className="cursor-pointer px-4 py-2 font-medium text-zinc-900">
                 {s.label}
               </summary>
               <div className="space-y-2 border-t border-zinc-200 px-4 pb-4 pt-2">
-                {sectionFields.length > 0 ? sectionFields.map(renderField) : <p className="text-sm text-zinc-500">No fields in this section</p>}
+                {sectionRows.length > 0 ? sectionRows.map(renderRow) : <p className="text-sm text-zinc-500">No fields in this section</p>}
               </div>
             </details>
           );
@@ -373,7 +405,7 @@ function LayoutPreview({
           <div className="mt-2 text-sm text-zinc-600">Sample nominee</div>
         </div>
         <div className="min-w-0 flex-1 space-y-2 rounded border border-zinc-200 bg-white p-4">
-          {unpinned.map(renderField)}
+          {sectionsWithRows.flatMap((section) => section.rows).map(renderRow)}
         </div>
       </div>
       </div>
@@ -384,13 +416,13 @@ function LayoutPreview({
   return (
     <div className="space-y-4">
       {PinnedCard}
-      {tabList.map((s) => {
-        const sectionFields = fieldsBySection[s.section_key] ?? [];
+      {sectionsWithRows.map((s) => {
+        const sectionRows = s.rows ?? [];
         return (
           <div key={s.section_key} className="rounded border border-zinc-200 p-4" style={{ backgroundColor: colors.cardBg }}>
             <div className="mb-2 text-sm font-medium" style={{ color: colors.headerText }}>{s.label}</div>
             <div className="space-y-3">
-              {sectionFields.length > 0 ? sectionFields.map(renderField) : <p className="text-sm text-zinc-500">No fields in this section</p>}
+              {sectionRows.length > 0 ? sectionRows.map(renderRow) : <p className="text-sm text-zinc-500">No fields in this section</p>}
             </div>
           </div>
         );
@@ -493,6 +525,7 @@ export function FieldMappingBuilder({
     roles: Role[];
     viewConfigs: {
       view_type: string;
+      layout_json?: SavedLayoutJson | null;
       settings_json?: {
         colors?: LayoutColors;
         pinnedFieldKeys?: string[];
@@ -509,6 +542,9 @@ export function FieldMappingBuilder({
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [purposeOverrides, setPurposeOverrides] = useState<Record<string, PurposeOverride>>({});
   const [blindReviewEnabled, setBlindReviewEnabled] = useState(false);
+  const [layoutDraft, setLayoutDraft] = useState<DraftLayoutJson>(() =>
+    createDraftLayout(null, [{ section_key: "main", label: "Review", sort_order: 0 }])
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -546,20 +582,20 @@ export function FieldMappingBuilder({
           setBlindReviewEnabled(settings?.blindReview === true);
         }
         if (d.viewSections?.length > 0) {
-          setSections(
-            d.viewSections
-              .sort((a: ViewSection, b: ViewSection) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-              .map((vs: { id?: string; section_key: string; label: string; sort_order: number }) => ({
-                id: vs.id,
-                section_key: vs.section_key,
-                label: vs.label,
-                sort_order: vs.sort_order,
-              }))
-          );
+          const nextSections = d.viewSections
+            .sort((a: ViewSection, b: ViewSection) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+            .map((vs: { id?: string; section_key: string; label: string; sort_order: number }) => ({
+              id: vs.id,
+              section_key: vs.section_key,
+              label: vs.label,
+              sort_order: vs.sort_order,
+            }));
+          setSections(nextSections);
+          setLayoutDraft(createDraftLayout(d.viewConfigs?.[0]?.layout_json ?? null, nextSections));
         } else {
-          setSections([
-            { section_key: "main", label: "Review", sort_order: 0 },
-          ]);
+          const nextSections = [{ section_key: "main", label: "Review", sort_order: 0 }];
+          setSections(nextSections);
+          setLayoutDraft(createDraftLayout(d.viewConfigs?.[0]?.layout_json ?? null, nextSections));
         }
         if (d.fieldConfigs?.length > 0) {
           const permsByField = (d.permissions ?? []).reduce(
@@ -633,28 +669,33 @@ export function FieldMappingBuilder({
         permissions: defaultPerms,
       },
     ]);
+    setLayoutDraft((prev) => appendFieldAsFullRow(prev, key, defaultSection));
   }
 
   function addSection() {
     const n = sections.length;
     const section_key = `section_${n}`;
-    setSections((prev) => [
-      ...prev,
+    const nextSections = [
+      ...sections,
       { section_key, label: `Section ${n + 1}`, sort_order: n },
-    ]);
+    ];
+    setSections(nextSections);
+    setLayoutDraft((prev) => syncDraftLayoutSections(prev, nextSections));
   }
 
   function updateSection(idx: number, updates: Partial<ViewSection>) {
-    setSections((prev) =>
-      prev.map((s, i) => (i === idx ? { ...s, ...updates } : s))
-    );
+    const nextSections = sections.map((s, i) => (i === idx ? { ...s, ...updates } : s));
+    setSections(nextSections);
+    setLayoutDraft((prev) => syncDraftLayoutSections(prev, nextSections));
   }
 
   function removeSection(idx: number) {
     const removed = sections[idx];
     if (!removed) return;
     const fallback = sections.find((_, i) => i !== idx);
-    setSections((prev) => prev.filter((_, i) => i !== idx));
+    const nextSections = sections.filter((_, i) => i !== idx);
+    setSections(nextSections);
+    setLayoutDraft((prev) => syncDraftLayoutSections(prev, nextSections));
     if (fallback) {
       setMapped((prev) =>
         prev.map((m) =>
@@ -668,14 +709,29 @@ export function FieldMappingBuilder({
 
   function removeMapping(idx: number) {
     pushHistory(mapped);
+    const fieldKey = mapped[idx]?.fieldKey;
     setMapped((prev) => prev.filter((_, i) => i !== idx));
+    if (fieldKey) {
+      setLayoutDraft((prev) => removeFieldFromDraftLayout(prev, fieldKey));
+    }
   }
 
   function updateMapping(idx: number, updates: Partial<MappedField>) {
     pushHistory(mapped);
+    const current = mapped[idx];
     setMapped((prev) =>
       prev.map((m, i) => (i === idx ? { ...m, ...updates } : m))
     );
+    if (!current) return;
+    if (updates.pinned === true && !current.pinned) {
+      setLayoutDraft((prev) => removeFieldFromDraftLayout(prev, current.fieldKey));
+      return;
+    }
+    if (updates.pinned === false && current.pinned) {
+      setLayoutDraft((prev) =>
+        appendFieldAsFullRow(prev, current.fieldKey, sections[0]?.section_key)
+      );
+    }
   }
 
   function isPurposeEditable(purpose: string): boolean {
@@ -708,6 +764,7 @@ export function FieldMappingBuilder({
     setError("");
     setSaving(true);
     try {
+      const normalizedLayout = normalizeDraftLayout(layoutDraft, sections);
       const res = await fetch(`/api/admin/cycles/${cycleId}/builder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -725,10 +782,11 @@ export function FieldMappingBuilder({
               displayLabel: m.displayLabel,
               displayType: DISPLAY_TYPES[m.purpose] || m.displayType,
               sortOrder: i,
-              sectionKey: m.sectionKey ?? sections[0]?.section_key,
+              sectionKey: getFieldSectionKey(layoutDraft, m.fieldKey) ?? m.sectionKey ?? sections[0]?.section_key,
               permissions: ensured.permissions,
             };
           }),
+          layoutJson: normalizedLayout,
           viewType,
           purposeOverrides,
           sections: ["tabbed", "stacked", "accordion"].includes(viewType) && sections.length > 0
@@ -855,7 +913,7 @@ export function FieldMappingBuilder({
 
       <AccordionCard title="Columns" defaultOpen>
         <p className="mb-2 text-xs text-zinc-500">
-          Drag to reorder. Order determines display in reviewer layout.
+          Drag to reorder the field library. Exact reviewer placement is controlled in the Row layout panel.
         </p>
         <div className="space-y-2">
           <div
@@ -971,17 +1029,15 @@ export function FieldMappingBuilder({
                   m.pinned ? (
                     <span className="text-xs text-zinc-400 italic">—</span>
                   ) : (
-                    <select
-                      value={m.sectionKey ?? sections[0]?.section_key ?? ""}
-                      onChange={(e) => updateMapping(idx, { sectionKey: e.target.value })}
-                      className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                    >
-                      {sections.map((s) => (
-                        <option key={s.section_key} value={s.section_key}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
+                    <span className="text-sm text-zinc-600">
+                      {sections.find(
+                        (section) =>
+                          section.section_key ===
+                          (getFieldSectionKey(layoutDraft, m.fieldKey) ??
+                            m.sectionKey ??
+                            sections[0]?.section_key)
+                      )?.label ?? "Review"}
+                    </span>
                   )
                 )}
                 <label className="flex cursor-pointer items-center gap-1" title="Pin to header card — always visible above tabs">
@@ -1079,10 +1135,27 @@ export function FieldMappingBuilder({
         </div>
       </AccordionCard>
 
+      <AccordionCard title="Row layout">
+        <RowLayoutEditor
+          layout={layoutDraft}
+          fields={mapped
+            .filter((field) => !field.pinned)
+            .map((field) => ({
+              field_key: field.fieldKey,
+              label: field.displayLabel || field.sourceColumnTitle,
+              badge: getPurposeLabel(field.purpose),
+            }))}
+          sections={sections}
+          onChange={setLayoutDraft}
+          title="Reviewer rows"
+          description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field or two side-by-side fields."
+        />
+      </AccordionCard>
+
       {usesSections && (
         <AccordionCard title="Tabs">
           <p className="mb-3 text-sm text-zinc-600">
-            Define sections used for tabbed, stacked, and accordion layouts. Assign fields to sections using the Section column in the Columns table above.
+            Define sections used for tabbed, stacked, and accordion layouts. Row placement inside each section is controlled in the Row layout panel above.
           </p>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium text-zinc-700">Sections</span>
@@ -1130,6 +1203,7 @@ export function FieldMappingBuilder({
           columns={columns}
           sections={sections}
           colors={colors}
+          layoutJson={normalizeDraftLayout(layoutDraft, sections)}
           blindReviewEnabled={blindReviewEnabled}
         />
       </AccordionCard>

@@ -49,7 +49,7 @@ export async function PUT(
   if (!form) return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
 
   const body = await request.json();
-  const { fields } = body;
+  const { fields, layoutJson } = body;
 
   if (!Array.isArray(fields)) {
     return NextResponse.json({ error: "fields must be an array" }, { status: 400 });
@@ -71,13 +71,6 @@ export async function PUT(
     if (typeof f.label !== "string" || f.label.trim() === "") {
       return NextResponse.json({ error: `Field "${f.field_key}" is missing a label` }, { status: 400 });
     }
-    if (
-      f.settings_json?.layout_mode !== undefined &&
-      !["full", "left", "right"].includes(f.settings_json.layout_mode)
-    ) {
-      return NextResponse.json({ error: `Field "${f.label}" has an invalid desktop layout` }, { status: 400 });
-    }
-
     if (f.field_type === "file") {
       if (f.target_column_id || f.target_column_title || f.target_column_type) {
         return NextResponse.json({ error: `File field "${f.label}" cannot map directly to a Smartsheet column` }, { status: 400 });
@@ -114,7 +107,7 @@ export async function PUT(
   }
 
   const layoutResult = validateLayoutJson(
-    buildIntakeLayoutFromFields(fields),
+    layoutJson ?? buildIntakeLayoutFromFields(fields),
     {
       knownFieldKeys: fields.map((field: { field_key: string }) => field.field_key),
       requireAllPlaced: false,

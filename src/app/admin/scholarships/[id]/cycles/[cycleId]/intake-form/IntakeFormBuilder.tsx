@@ -4,6 +4,17 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "./RichTextEditor";
+import { RowLayoutEditor } from "@/components/layout/RowLayoutEditor";
+import type { SavedLayoutJson } from "@/lib/layout";
+import { createEmptyLayout } from "@/lib/layout";
+import type { DraftLayoutJson } from "@/lib/layout-editor";
+import {
+  appendFieldAsFullRow,
+  createDraftLayout,
+  normalizeDraftLayout,
+  removeFieldFromDraftLayout,
+  renameFieldInDraftLayout,
+} from "@/lib/layout-editor";
 
 interface Column {
   id: number;
@@ -42,9 +53,8 @@ interface IntakeForm {
   opens_at: string | null;
   closes_at: string | null;
   published_version_id: string | null;
+  layout_json?: SavedLayoutJson | null;
 }
-
-type DesktopLayoutMode = "full" | "left" | "right";
 
 const FIELD_TYPES = [
   { value: "short_text", label: "Short Text" },
@@ -58,17 +68,9 @@ const FIELD_TYPES = [
 ];
 
 const CUSTOM_ADDABLE_FIELD_TYPES = FIELD_TYPES.filter((type) => type.value === "file");
-const DESKTOP_LAYOUT_OPTIONS: Array<{
-  value: DesktopLayoutMode;
-  label: string;
-  description: string;
-}> = [
-  { value: "full", label: "Full width", description: "Spans the full form width on desktop" },
-  { value: "left", label: "Left column", description: "Pins this field to the left desktop column" },
-  { value: "right", label: "Right column", description: "Pins this field to the right desktop column" },
-];
 
 const ALLOWED_SMARTSHEET_TYPES = ["TEXT_NUMBER", "PICKLIST", "DATE", "CHECKBOX"];
+const INTAKE_LAYOUT_SECTIONS = [{ section_key: "main", label: "Main", sort_order: 0 }];
 
 function slugifyFieldKey(value: string): string {
   return value
@@ -112,11 +114,6 @@ function getSelectOptions(field: IntakeField): string[] {
   const options = field.settings_json?.options;
   if (!Array.isArray(options)) return [];
   return options.filter((option): option is string => typeof option === "string" && option.trim() !== "");
-}
-
-function getDesktopLayoutMode(field: IntakeField): DesktopLayoutMode {
-  const mode = field.settings_json?.layout_mode;
-  return mode === "left" || mode === "right" || mode === "full" ? mode : "full";
 }
 
 function AccordionCard({
@@ -163,6 +160,9 @@ export default function IntakeFormBuilder({
   const [submissions, setSubmissions] = useState<IntakeSubmissionSummary[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState("");
+  const [layoutDraft, setLayoutDraft] = useState<DraftLayoutJson>(() =>
+    createDraftLayout(createEmptyLayout(), INTAKE_LAYOUT_SECTIONS)
+  );
 
   useEffect(() => {
     async function load() {
@@ -181,6 +181,9 @@ export default function IntakeFormBuilder({
 
         setForm(data.form);
         setFields(data.fields || []);
+        setLayoutDraft(
+          createDraftLayout(data.form?.layout_json ?? createEmptyLayout(), INTAKE_LAYOUT_SECTIONS)
+        );
         setColumns(cycleData.columns || []);
         
         loadSubmissions();
@@ -221,6 +224,7 @@ export default function IntakeFormBuilder({
       settings_json: overrides.settings_json ?? getDefaultSettingsForFieldType(type)
     };
     setFields([...fields, newField]);
+    setLayoutDraft((current) => appendFieldAsFullRow(current, newField.field_key, "main"));
   };
 
   const addFieldFromSelectedColumn = () => {
@@ -240,40 +244,27 @@ export default function IntakeFormBuilder({
   };
 
   const removeField = (index: number) => {
+    const field = fields[index];
     setFields(fields.filter((_, i) => i !== index));
+    if (field) {
+      setLayoutDraft((current) => removeFieldFromDraftLayout(current, field.field_key));
+    }
   };
 
   const updateField = (index: number, updates: Partial<IntakeField>) => {
     const next = [...fields];
+    const previousFieldKey = next[index]?.field_key;
     next[index] = { ...next[index], ...updates };
     setFields(next);
-  };
-
-  const updateFieldLayout = (index: number, layoutMode: DesktopLayoutMode) => {
-    const field = fields[index];
-    if (!field) return;
-    updateField(index, {
-      settings_json: {
-        ...field.settings_json,
-        layout_mode: layoutMode,
-      },
-    });
-  };
-
-  const moveFieldToLayout = (fieldKey: string, layoutMode: DesktopLayoutMode) => {
-    setFields((current) =>
-      current.map((field) =>
-        field.field_key === fieldKey
-          ? {
-              ...field,
-              settings_json: {
-                ...field.settings_json,
-                layout_mode: layoutMode,
-              },
-            }
-          : field
-      )
-    );
+    if (
+      previousFieldKey &&
+      typeof updates.field_key === "string" &&
+      updates.field_key !== previousFieldKey
+    ) {
+      setLayoutDraft((current) =>
+        renameFieldInDraftLayout(current, previousFieldKey, updates.field_key as string)
+      );
+    }
   };
 
   const handleSave = async () => {
@@ -293,7 +284,10 @@ export default function IntakeFormBuilder({
       const fieldsRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form/fields`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fields })
+        body: JSON.stringify({
+          fields,
+          layoutJson: normalizeDraftLayout(layoutDraft, INTAKE_LAYOUT_SECTIONS),
+        })
       });
       if (!fieldsRes.ok) {
         const d = await fieldsRes.json();
@@ -577,47 +571,24 @@ export default function IntakeFormBuilder({
           </div>
 
           {fields.length > 0 && (
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-zinc-900">Desktop layout</h3>
-              <p className="mt-1 text-sm text-zinc-600">
-                Drag question chips between lanes to place them left, right, or full width on desktop. Mobile still stacks everything in one column.
-              </p>
-              <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                {DESKTOP_LAYOUT_OPTIONS.map((option) => {
-                  const laneFields = fields.filter((field) => getDesktopLayoutMode(field) === option.value);
-                  return (
-                    <div
-                      key={option.value}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const fieldKey = e.dataTransfer.getData("text/plain");
-                        if (fieldKey) moveFieldToLayout(fieldKey, option.value);
-                      }}
-                      className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 p-3"
-                    >
-                      <h4 className="text-sm font-medium text-zinc-900">{option.label}</h4>
-                      <p className="mt-1 text-xs text-zinc-500">{option.description}</p>
-                      <div className="mt-3 flex min-h-16 flex-wrap gap-2">
-                        {laneFields.length > 0 ? laneFields.map((field) => (
-                          <button
-                            key={field.field_key}
-                            type="button"
-                            draggable
-                            onDragStart={(e) => e.dataTransfer.setData("text/plain", field.field_key)}
-                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 shadow-sm"
-                          >
-                            {field.label}
-                          </button>
-                        )) : (
-                          <span className="text-xs text-zinc-400">Drop questions here</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <RowLayoutEditor
+              layout={layoutDraft}
+              fields={fields.map((field) => ({
+                field_key: field.field_key,
+                label: field.label,
+                badge: FIELD_TYPES.find((type) => type.value === field.field_type)?.label,
+              }))}
+              sections={INTAKE_LAYOUT_SECTIONS}
+              onChange={setLayoutDraft}
+              title="Desktop layout"
+              description="Arrange questions into exact desktop rows. A row can be one full-width field or two side-by-side fields. Mobile still stacks everything in one column."
+            />
+          )}
+
+          {fields.length > 0 && (
+            <p className="text-xs text-zinc-500">
+              The question cards below control labels, validation, and mapping. Exact desktop placement is controlled in the Desktop layout panel above.
+            </p>
           )}
 
           {fields.map((field, idx) => (
@@ -682,22 +653,6 @@ export default function IntakeFormBuilder({
                     className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-zinc-500">Desktop Layout</label>
-                  <select
-                    value={getDesktopLayoutMode(field)}
-                    onChange={(e) => updateFieldLayout(idx, e.target.value as DesktopLayoutMode)}
-                    className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
-                  >
-                    {DESKTOP_LAYOUT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-[10px] text-zinc-500">Mobile always stacks this field in one column.</p>
-                </div>
-
                 {field.field_type !== "file" && (
                   <>
                     <div>

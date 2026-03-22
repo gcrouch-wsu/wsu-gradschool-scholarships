@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { SavedLayoutJson } from "@/lib/layout";
+import { bindFieldsToLayout } from "@/lib/layout-runtime";
 
 interface LayoutColors {
   accent: string;
@@ -53,6 +55,7 @@ export function PreviewScoreForm({
   const [viewType, setViewType] = useState<string>("tabbed");
   const [viewSections, setViewSections] = useState<ViewSection[]>([]);
   const [activeTab, setActiveTab] = useState<string>("main");
+  const [layoutJson, setLayoutJson] = useState<SavedLayoutJson | null>(null);
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
   const [columnOptions, setColumnOptions] = useState<Record<number, string[]>>({});
@@ -94,6 +97,7 @@ export function PreviewScoreForm({
       setViewType(vType);
       setViewSections(vSections);
       if (vSections.length > 0) setActiveTab(vSections[0].section_key);
+      setLayoutJson(configData.layoutJson ?? null);
       setColors({ ...DEFAULT_COLORS, ...(configData.colors ?? {}) });
       setPinnedFieldKeys(configData.pinnedFieldKeys ?? []);
       setColumnOptions(configData.columnOptions ?? {});
@@ -127,19 +131,20 @@ export function PreviewScoreForm({
     );
   }
 
-  const pinnedFields = fields.filter((f) => pinnedFieldKeys.includes(f.fieldKey));
-  const unpinnedFields = fields.filter((f) => !pinnedFieldKeys.includes(f.fieldKey));
-  const editableFields = unpinnedFields.filter((f) => f.canEdit);
-  const readOnlyFields = unpinnedFields.filter((f) => !f.canEdit);
   const sections = viewSections.length > 0
     ? viewSections
     : [{ section_key: "main", label: "Review", sort_order: 0 }];
+  const boundLayout = bindFieldsToLayout({
+    layoutJson,
+    fields,
+    getFieldKey: (field) => field.fieldKey,
+    sections,
+    pinnedFieldKeys,
+  });
+  const pinnedFields = boundLayout.pinnedFields;
+  const layoutSections = boundLayout.sections;
   const useTabs = viewType === "tabbed" && sections.length > 0;
   const useSections = ["tabbed", "stacked", "accordion"].includes(viewType) && sections.length > 0;
-  const fieldsBySection = sections.reduce((acc, s) => {
-    acc[s.section_key] = unpinnedFields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
-    return acc;
-  }, {} as Record<string, Field[]>);
 
   function renderFieldContent(f: Field) {
     return (
@@ -180,6 +185,19 @@ export function PreviewScoreForm({
             placeholder="Enter comments or recommendations..."
             className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
+        )}
+      </div>
+    );
+  }
+
+  function renderRow(row: { row_key: string; fields: Field[] }) {
+    return (
+      <div
+        key={row.row_key}
+        className={row.fields.length === 2 ? "grid gap-3 md:grid-cols-2" : "space-y-3"}
+      >
+        {row.fields.map((field) =>
+          field.canEdit ? renderEditableField(field) : renderFieldContent(field)
         )}
       </div>
     );
@@ -257,9 +275,7 @@ export function PreviewScoreForm({
           </div>
           <div className="p-4">
             <div className="space-y-4">
-              {(fieldsBySection[activeTab] ?? []).map((f) =>
-                f.canEdit ? renderEditableField(f) : renderFieldContent(f)
-              )}
+              {(layoutSections.find((section) => section.section_key === activeTab)?.rows ?? []).map(renderRow)}
             </div>
           </div>
         </div>
@@ -267,16 +283,15 @@ export function PreviewScoreForm({
         viewType === "accordion" ? (
           <div className="space-y-2">
             {sections.map((s) => {
-              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              const sectionRows =
+                layoutSections.find((section) => section.section_key === s.section_key)?.rows ?? [];
               return (
                 <details key={s.section_key} open className="rounded-lg border border-zinc-200 bg-white">
                   <summary className="cursor-pointer px-4 py-3 font-medium text-zinc-900">
                     {s.label}
                   </summary>
                   <div className="space-y-3 border-t border-zinc-200 px-4 pb-4 pt-3">
-                    {sectionFields.map((f) =>
-                      f.canEdit ? renderEditableField(f) : renderFieldContent(f)
-                    )}
+                    {sectionRows.map(renderRow)}
                   </div>
                 </details>
               );
@@ -285,14 +300,13 @@ export function PreviewScoreForm({
         ) : (
           <div className="space-y-4">
             {sections.map((s) => {
-              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              const sectionRows =
+                layoutSections.find((section) => section.section_key === s.section_key)?.rows ?? [];
               return (
                 <div key={s.section_key} className="rounded-lg border border-zinc-200 bg-white p-4">
                   <h2 className="mb-3 font-medium text-zinc-900">{s.label}</h2>
                   <div className="space-y-3">
-                    {sectionFields.map((f) =>
-                      f.canEdit ? renderEditableField(f) : renderFieldContent(f)
-                    )}
+                    {sectionRows.map(renderRow)}
                   </div>
                 </div>
               );
@@ -301,9 +315,9 @@ export function PreviewScoreForm({
         )
       ) : (
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <div className="space-y-3">{unpinnedFields.map((f) =>
-            f.canEdit ? renderEditableField(f) : renderFieldContent(f)
-          )}</div>
+          <div className="space-y-3">
+            {layoutSections.flatMap((section) => section.rows).map(renderRow)}
+          </div>
         </div>
       )}
 

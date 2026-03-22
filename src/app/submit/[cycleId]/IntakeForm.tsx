@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { put } from "@vercel/blob/client";
 import { sanitizeRichTextHtml } from "@/lib/rich-text";
+import type { SavedLayoutJson } from "@/lib/layout";
+import { bindFieldsToLayout } from "@/lib/layout-runtime";
 
 interface Field {
   field_key: string;
@@ -21,6 +23,7 @@ interface FormSchema {
   status: "open" | "scheduled" | "closed";
   opensAt: string | null;
   closesAt: string | null;
+  layoutJson: SavedLayoutJson;
   fields: Field[];
   fileLimits: {
     maxSizeBytes: number;
@@ -46,11 +49,6 @@ function getSelectOptions(field: Field): string[] {
   const options = field.settings_json?.options;
   if (!Array.isArray(options)) return [];
   return options.filter((option): option is string => typeof option === "string");
-}
-
-function getDesktopLayoutMode(field: Field): "full" | "left" | "right" {
-  const mode = field.settings_json?.layout_mode;
-  return mode === "left" || mode === "right" || mode === "full" ? mode : "full";
 }
 
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
@@ -240,6 +238,12 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   if (error && !schema) return <div className="p-8 text-center text-red-600 font-medium">{error}</div>;
   if (!schema) return null;
   const instructionsHtml = sanitizeRichTextHtml(schema.instructionsText);
+  const boundLayout = bindFieldsToLayout({
+    layoutJson: schema.layoutJson,
+    fields: schema.fields,
+    getFieldKey: (field) => field.field_key,
+    sections: [{ section_key: "main", label: "Main", sort_order: 0 }],
+  });
 
   if (schema.status !== "open") {
     return (
@@ -324,7 +328,18 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
           <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4 md:col-span-2">Nomination Details</h2>
 
-          {schema.fields.map((field) => {
+          {boundLayout.sections[0]?.rows.map((row) => {
+            const rowFields = row.fields;
+            return (
+              <div
+                key={row.row_key}
+                className={
+                  rowFields.length === 2
+                    ? "grid gap-6 md:col-span-2 md:grid-cols-2"
+                    : "md:col-span-2"
+                }
+              >
+                {rowFields.map((field) => {
             const id = `field_${field.field_key}`;
             const fieldFiles = files[field.field_key] || [];
             const allowMultiple = Boolean(field.settings_json?.multiple);
@@ -332,13 +347,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             return (
               <div
                 key={field.field_key}
-                className={
-                  getDesktopLayoutMode(field) === "full"
-                    ? "md:col-span-2"
-                    : getDesktopLayoutMode(field) === "right"
-                      ? "md:col-start-2"
-                      : "md:col-start-1"
-                }
+                className={rowFields.length === 2 ? "" : "md:col-span-2"}
               >
                 <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}
@@ -458,6 +467,9 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     )}
                   </div>
                 ) : null}
+              </div>
+            );
+                })}
               </div>
             );
           })}

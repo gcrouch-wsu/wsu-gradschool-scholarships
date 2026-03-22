@@ -191,6 +191,7 @@ export async function POST(
 
   const {
     fieldConfigs,
+    layoutJson,
     viewType,
     sections,
     colors,
@@ -202,6 +203,7 @@ export async function POST(
     pinnedFieldKeys?: string[];
     hiddenFieldKeys?: string[];
     purposeOverrides?: Record<string, { label?: string; desc?: string; editable?: boolean }>;
+    layoutJson?: unknown;
     fieldConfigs: Array<{
       fieldKey: string;
       sourceColumnId: number;
@@ -244,7 +246,7 @@ export async function POST(
     sectionList,
     pinnedFieldKeys ?? []
   );
-  const layoutValidation = validateLayoutJson(reviewerLayout, {
+  const layoutValidation = validateLayoutJson(layoutJson ?? reviewerLayout, {
     knownFieldKeys: fieldConfigs.map((fieldConfig) => fieldConfig.fieldKey),
     pinnedFieldKeys: pinnedFieldKeys ?? [],
     requireAllPlaced: true,
@@ -364,13 +366,22 @@ export async function POST(
         [cycleId]
       );
       const fieldKeyToId = Object.fromEntries(fcRows.map((r) => [r.field_key, r.id]));
+      const fieldKeyToSectionKey = Object.fromEntries(
+        layoutValidation.normalized.sections.flatMap((section) =>
+          section.rows.flatMap((row) =>
+            row.items.map((item) => [item.field_key, section.section_key] as const)
+          )
+        )
+      );
       const defaultSectionKey = sectionListForLegacyTables[0]?.section_key ?? "main";
       for (let i = 0; i < fcRows.length; i++) {
         const fc = fcRows[i]!;
         const fcPayload = fieldConfigs[i];
-        const sectionKey = (fcPayload?.sectionKey && sectionKeyToId[fcPayload.sectionKey])
-          ? fcPayload.sectionKey
-          : defaultSectionKey;
+        const sectionKey = (fieldKeyToSectionKey[fc.field_key] && sectionKeyToId[fieldKeyToSectionKey[fc.field_key]])
+          ? fieldKeyToSectionKey[fc.field_key]
+          : (fcPayload?.sectionKey && sectionKeyToId[fcPayload.sectionKey])
+            ? fcPayload.sectionKey
+            : defaultSectionKey;
         const viewSectionId = sectionKeyToId[sectionKey];
         if (viewSectionId && fc.id) {
           await tx(

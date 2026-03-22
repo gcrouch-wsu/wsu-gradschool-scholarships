@@ -4,6 +4,8 @@ import { put } from "@vercel/blob/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { SavedLayoutJson } from "@/lib/layout";
+import { bindFieldsToLayout } from "@/lib/layout-runtime";
 
 type SaveState = "idle" | "unsaved_changes" | "saving" | "saved" | "failed";
 
@@ -62,6 +64,7 @@ export function ReviewerScoreForm({
   const [viewType, setViewType] = useState<string>("tabbed");
   const [viewSections, setViewSections] = useState<ViewSection[]>([]);
   const [activeTab, setActiveTab] = useState<string>("main");
+  const [layoutJson, setLayoutJson] = useState<SavedLayoutJson | null>(null);
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +114,7 @@ export function ReviewerScoreForm({
       setViewType(vType);
       setViewSections(vSections);
       if (vSections.length > 0) setActiveTab(vSections[0].section_key);
+      setLayoutJson(configData.layoutJson ?? null);
       setColors({ ...DEFAULT_COLORS, ...(configData.colors ?? {}) });
       setPinnedFieldKeys(configData.pinnedFieldKeys ?? []);
       setCanUploadAttachments(configData.canUploadAttachments === true);
@@ -266,19 +270,20 @@ export function ReviewerScoreForm({
     );
   }
 
-  const pinnedFields = fields.filter((f) => pinnedFieldKeys.includes(f.fieldKey));
-  const unpinnedFields = fields.filter((f) => !pinnedFieldKeys.includes(f.fieldKey));
-  const editableFields = unpinnedFields.filter((f) => f.canEdit);
-  const readOnlyFields = unpinnedFields.filter((f) => !f.canEdit);
   const sections = viewSections.length > 0
     ? viewSections
     : [{ section_key: "main", label: "Review", sort_order: 0 }];
+  const boundLayout = bindFieldsToLayout({
+    layoutJson,
+    fields,
+    getFieldKey: (field) => field.fieldKey,
+    sections,
+    pinnedFieldKeys,
+  });
+  const pinnedFields = boundLayout.pinnedFields;
+  const layoutSections = boundLayout.sections;
   const useTabs = viewType === "tabbed" && sections.length > 0;
   const useSections = ["tabbed", "stacked", "accordion"].includes(viewType) && sections.length > 0;
-  const fieldsBySection = sections.reduce((acc, s) => {
-    acc[s.section_key] = unpinnedFields.filter((f) => (f.sectionKey ?? "main") === s.section_key);
-    return acc;
-  }, {} as Record<string, Field[]>);
 
   function renderReadOnlyField(f: Field) {
     return (
@@ -314,6 +319,19 @@ export function ReviewerScoreForm({
             rows={4}
             className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
+        )}
+      </div>
+    );
+  }
+
+  function renderRow(row: { row_key: string; fields: Field[] }) {
+    return (
+      <div
+        key={row.row_key}
+        className={row.fields.length === 2 ? "grid gap-4 md:grid-cols-2" : "space-y-4"}
+      >
+        {row.fields.map((field) =>
+          field.canEdit ? renderEditableField(field) : renderReadOnlyField(field)
         )}
       </div>
     );
@@ -482,10 +500,8 @@ export function ReviewerScoreForm({
           </div>
           <div className="p-4">
             <div className="space-y-4">
-              {(fieldsBySection[activeTab] ?? []).length > 0 ? (
-                (fieldsBySection[activeTab] ?? []).map((f) =>
-                  f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
-                )
+              {(layoutSections.find((section) => section.section_key === activeTab)?.rows ?? []).length > 0 ? (
+                (layoutSections.find((section) => section.section_key === activeTab)?.rows ?? []).map(renderRow)
               ) : (
                 <p className="text-sm text-zinc-500">No fields in this section.</p>
               )}
@@ -496,17 +512,16 @@ export function ReviewerScoreForm({
         viewType === "accordion" ? (
           <div className="space-y-2">
             {sections.map((s) => {
-              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              const sectionRows =
+                layoutSections.find((section) => section.section_key === s.section_key)?.rows ?? [];
               return (
                 <details key={s.section_key} open className="rounded-lg border border-zinc-200 bg-white">
                   <summary className="cursor-pointer px-4 py-3 font-medium text-zinc-900">
                     {s.label}
                   </summary>
                   <div className="space-y-4 border-t border-zinc-200 px-4 pb-4 pt-3">
-                    {sectionFields.length > 0 ? (
-                      sectionFields.map((f) =>
-                        f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
-                      )
+                    {sectionRows.length > 0 ? (
+                      sectionRows.map(renderRow)
                     ) : (
                       <p className="text-sm text-zinc-500">No fields in this section.</p>
                     )}
@@ -518,15 +533,14 @@ export function ReviewerScoreForm({
         ) : (
           <div className="space-y-4">
             {sections.map((s) => {
-              const sectionFields = fieldsBySection[s.section_key] ?? [];
+              const sectionRows =
+                layoutSections.find((section) => section.section_key === s.section_key)?.rows ?? [];
               return (
                 <div key={s.section_key} className="rounded-lg border border-zinc-200 bg-white p-4">
                   <h2 className="mb-3 font-medium text-zinc-900">{s.label}</h2>
                   <div className="space-y-4">
-                    {sectionFields.length > 0 ? (
-                      sectionFields.map((f) =>
-                        f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
-                      )
+                    {sectionRows.length > 0 ? (
+                      sectionRows.map(renderRow)
                     ) : (
                       <p className="text-sm text-zinc-500">No fields in this section.</p>
                     )}
@@ -538,9 +552,9 @@ export function ReviewerScoreForm({
         )
       ) : (
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <div className="space-y-4">{unpinnedFields.map((f) =>
-            f.canEdit ? renderEditableField(f) : renderReadOnlyField(f)
-          )}</div>
+          <div className="space-y-4">
+            {layoutSections.flatMap((section) => section.rows).map(renderRow)}
+          </div>
         </div>
       )}
 
