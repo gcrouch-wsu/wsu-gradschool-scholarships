@@ -12,6 +12,7 @@ export function ExportImportConfig({
 }) {
   const router = useRouter();
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportAttachmentsLoading, setExportAttachmentsLoading] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
   const [saveTemplateLoading, setSaveTemplateLoading] = useState(false);
   const [importError, setImportError] = useState("");
@@ -42,6 +43,32 @@ export function ExportImportConfig({
       setImportError("Export failed");
     } finally {
       setExportLoading(false);
+    }
+  }
+
+  async function handleExportAttachments() {
+    setExportAttachmentsLoading(true);
+    setImportError("");
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/export-attachments?mode=check`, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setImportError(data.error ?? "Export failed");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = `/api/admin/cycles/${cycleId}/export-attachments`;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      setImportError("Export failed");
+    } finally {
+      setExportAttachmentsLoading(false);
     }
   }
 
@@ -123,6 +150,14 @@ export function ExportImportConfig({
           className="rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-white disabled:opacity-50"
         >
           {exportLoading ? "Exporting…" : "Export config"}
+        </button>
+        <button
+          type="button"
+          onClick={handleExportAttachments}
+          disabled={exportAttachmentsLoading}
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-white disabled:opacity-50"
+        >
+          {exportAttachmentsLoading ? "Exporting…" : "Export attachments (ZIP)"}
         </button>
         <label className="cursor-pointer rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-white">
           <input
