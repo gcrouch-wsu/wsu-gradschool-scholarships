@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
+import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import {
   buildReviewerLayoutFromFields,
   readLayoutJsonOrFallback,
@@ -45,66 +46,29 @@ export async function GET(
     );
   }
 
-  const { rows: fieldConfigs } = await query<{
-    id: string;
-    field_key: string;
-    source_column_id: number;
-    purpose: string;
-    display_label: string;
-    display_type: string;
-    sort_order: number;
-  }>(
-    `SELECT fc.id, fc.field_key, fc.source_column_id, fc.purpose, fc.display_label, fc.display_type, fc.sort_order
-     FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
-     ORDER BY fc.sort_order`,
-    [cycleId, membership[0]!.role_id]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const rolePermissions = effectiveConfig.permissions.filter(
+    (permission) => permission.role_id === membership[0]!.role_id
   );
-
-  const { rows: viewConfigs } = await query<{ view_type: string; settings_json: unknown; layout_json: unknown }>(
-    "SELECT view_type, settings_json, layout_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
-    [cycleId]
+  const viewablePermissionByFieldId = new Map(
+    rolePermissions
+      .filter((permission) => permission.can_view)
+      .map((permission) => [permission.field_config_id, permission])
   );
-  const { rows: viewSections } = await query<{
-    id: string;
-    section_key: string;
-    label: string;
-    sort_order: number;
-  }>(
-    `SELECT vs.id, vs.section_key, vs.label, vs.sort_order
-     FROM view_sections vs
-     JOIN view_configs vc ON vc.id = vs.view_config_id
-     WHERE vc.cycle_id = $1 ORDER BY vs.sort_order`,
-    [cycleId]
-  );
-  const { rows: sectionFields } = await query<{
-    view_section_id: string;
-    field_config_id: string;
-  }>(
-    `SELECT sf.view_section_id, sf.field_config_id
-     FROM section_fields sf
-     JOIN view_sections vs ON vs.id = sf.view_section_id
-     JOIN view_configs vc ON vc.id = vs.view_config_id
-     WHERE vc.cycle_id = $1`,
-    [cycleId]
-  );
+  const fieldConfigs = effectiveConfig.fieldConfigs
+    .filter((fieldConfig) => viewablePermissionByFieldId.has(fieldConfig.id))
+    .map((fieldConfig) => ({
+      ...fieldConfig,
+      can_edit: viewablePermissionByFieldId.get(fieldConfig.id)?.can_edit ?? false,
+    }));
+  const viewConfig = effectiveConfig.viewConfig;
+  const viewSections = effectiveConfig.viewSections;
+  const sectionFields = effectiveConfig.sectionFields;
   const fieldIdToSectionKey = Object.fromEntries(
     sectionFields.map((sf) => {
       const vs = viewSections.find((s) => s.id === sf.view_section_id);
       return [sf.field_config_id, vs?.section_key ?? "main"];
     })
-  );
-
-  const { rows: editPermissions } = await query<{
-    field_config_id: string;
-    source_column_id: number;
-  }>(
-    `SELECT fc.id as field_config_id, fc.source_column_id
-     FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_edit = true`,
-    [cycleId, membership[0]!.role_id]
   );
 
   const liveColumnIds = await getLiveColumnIds(cycleId);
@@ -134,9 +98,9 @@ export async function GET(
       ...f,
       section_key: fieldIdToSectionKey[f.id] ?? "main",
     }));
-  const validEditableIds = editPermissions
-    .filter((p) => liveColumnIds.has(String(p.source_column_id)))
-    .map((p) => p.source_column_id);
+  const validEditableIds = fieldConfigs
+    .filter((fieldConfig) => fieldConfig.can_edit && liveColumnIds.has(String(fieldConfig.source_column_id)))
+    .map((fieldConfig) => fieldConfig.source_column_id);
 
   const showAttachments = fieldConfigs.some(
     (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
@@ -144,7 +108,7 @@ export async function GET(
   const reviewerAttachmentSchema = await getReviewerAttachmentSchemaStatus();
   const canUploadAttachments = reviewerAttachmentSchema.available && showAttachments;
 
-  const viewSettings = viewConfigs[0]?.settings_json as {
+  const viewSettings = viewConfig?.settings_json as {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
     hiddenFieldKeys?: string[];
@@ -157,7 +121,7 @@ export async function GET(
     ? validFields.filter((f) => !hiddenFieldKeys.has(f.field_key))
     : validFields;
   const layoutJson = readLayoutJsonOrFallback(
-    viewConfigs[0]?.layout_json,
+    viewConfig?.layout_json,
     buildReviewerLayoutFromFields(
       validFields.map((field) => ({
         fieldKey: field.field_key,
@@ -182,7 +146,7 @@ export async function GET(
     columnOptions,
     showAttachments,
     canUploadAttachments,
-    viewType: viewConfigs[0]?.view_type ?? "tabbed",
+    viewType: viewConfig?.view_type ?? "tabbed",
     layoutJson,
     viewSections: viewSections.map((s) => ({
       section_key: s.section_key,

@@ -167,6 +167,7 @@ export default async function CycleDetailPage({
         status: string;
         published_version_id: string | null;
         updated_at: string;
+        published_at: string | null;
       }
     | undefined;
   if (intakeSchema.available) {
@@ -174,8 +175,12 @@ export default async function CycleDetailPage({
       status: string;
       published_version_id: string | null;
       updated_at: string;
+      published_at: string | null;
     }>(
-      "SELECT status, published_version_id, updated_at FROM intake_forms WHERE cycle_id = $1",
+      `SELECT f.status, f.published_version_id, f.updated_at, v.published_at
+       FROM intake_forms f
+       LEFT JOIN intake_form_versions v ON v.id = f.published_version_id
+       WHERE f.cycle_id = $1`,
       [cycleId]
     );
     intakeForm = intakeForms[0];
@@ -337,6 +342,9 @@ export default async function CycleDetailPage({
                   intakeForm.status === "published" ? "text-green-700" : "text-zinc-500"
                 }`}>
                   Status: {intakeForm.status}
+                  {intakeForm.status === "published" && intakeForm.published_at
+                    ? ` — ${new Date(intakeForm.published_at).toLocaleString()}`
+                    : ""}
                 </span>
                 {intakeForm.status === "published" && (
                   <Link

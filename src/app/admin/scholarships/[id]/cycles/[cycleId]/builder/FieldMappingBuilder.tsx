@@ -14,7 +14,7 @@ import {
   removeFieldFromDraftLayout,
   syncDraftLayoutSections,
 } from "@/lib/layout-editor";
-import { bindFieldsToLayout } from "@/lib/layout-runtime";
+import { bindFieldsToLayout, getBoundRowDesktopColumnCount } from "@/lib/layout-runtime";
 
 /**
  * Purpose = how this field is used in the reviewer UI (app-layer concept).
@@ -320,15 +320,16 @@ function LayoutPreview({
     );
   }
 
-  function renderRow(row: { row_key: string; items: Array<{ field: MappedField }> }) {
-    if (row.items.length === 2) {
+  function renderRow(row: { row_key: string; items: Array<{ field: MappedField; width: "full" | "half" | "third" }> }) {
+    const desktopColumns = getBoundRowDesktopColumnCount(row);
+    if (desktopColumns === 2) {
       return (
         <div key={row.row_key} className="grid gap-3 md:grid-cols-2">
           {row.items.map(({ field }) => renderField(field))}
         </div>
       );
     }
-    if (row.items.length === 3) {
+    if (desktopColumns === 3) {
       return (
         <div key={row.row_key} className="grid gap-3 md:grid-cols-3">
           {row.items.map(({ field }) => renderField(field))}

@@ -5,6 +5,7 @@ import { getSmartsheetWriteTimeoutMs } from "@/lib/db";
 import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
+import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import { getSheetRows, updateRowCells } from "@/lib/smartsheet";
 
 async function getRowData(cycleId: string, userId: string, rowId: number) {
@@ -77,52 +78,31 @@ export async function GET(
     );
   }
 
-  const { rows: fieldConfigs } = await query<{
-    id: string;
-    field_key: string;
-    source_column_id: number;
-    purpose: string;
-    display_label: string;
-    display_type: string;
-    can_edit: boolean;
-  }>(
-    `SELECT fc.id, fc.field_key, fc.source_column_id, fc.purpose, fc.display_label, fc.display_type, fp.can_edit
-     FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
-     ORDER BY fc.sort_order`,
-    [cycleId, data.roleId]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const rolePermissions = effectiveConfig.permissions.filter(
+    (permission) => permission.role_id === data.roleId
   );
+  const viewablePermissionByFieldId = new Map(
+    rolePermissions
+      .filter((permission) => permission.can_view)
+      .map((permission) => [permission.field_config_id, permission])
+  );
+  const fieldConfigs = effectiveConfig.fieldConfigs
+    .filter((fieldConfig) => viewablePermissionByFieldId.has(fieldConfig.id))
+    .map((fieldConfig) => ({
+      ...fieldConfig,
+      can_edit: viewablePermissionByFieldId.get(fieldConfig.id)?.can_edit ?? false,
+    }));
 
-  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
-    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
-    [cycleId]
-  );
-  const viewSettings = viewConfigs[0]?.settings_json as {
+  const viewSettings = effectiveConfig.viewConfig?.settings_json as {
     blindReview?: boolean;
     hiddenFieldKeys?: string[];
   } | null;
   const blindReview = viewSettings?.blindReview ?? false;
   const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
 
-  const { rows: sectionFields } = await query<{
-    view_section_id: string;
-    field_config_id: string;
-  }>(
-    `SELECT sf.view_section_id, sf.field_config_id
-     FROM section_fields sf
-     JOIN view_sections vs ON vs.id = sf.view_section_id
-     JOIN view_configs vc ON vc.id = vs.view_config_id
-     WHERE vc.cycle_id = $1`,
-    [cycleId]
-  );
-  const { rows: viewSections } = await query<{ id: string; section_key: string }>(
-    `SELECT vs.id, vs.section_key
-     FROM view_sections vs
-     JOIN view_configs vc ON vc.id = vs.view_config_id
-     WHERE vc.cycle_id = $1`,
-    [cycleId]
-  );
+  const sectionFields = effectiveConfig.sectionFields;
+  const viewSections = effectiveConfig.viewSections;
   const fieldIdToSectionKey = Object.fromEntries(
     sectionFields.map((sf) => {
       const vs = viewSections.find((s) => s.id === sf.view_section_id);
@@ -190,15 +170,18 @@ export async function POST(
     );
   }
 
-  const { rows: editable } = await query<{ source_column_id: number }>(
-    `SELECT fc.source_column_id FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_edit = true`,
-    [cycleId, data.roleId]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const rolePermissions = effectiveConfig.permissions.filter(
+    (permission) => permission.role_id === data.roleId
   );
   const editableIds = new Set(
-    editable
-      .map((e) => String(e.source_column_id))
+    effectiveConfig.fieldConfigs
+      .filter((fieldConfig) =>
+        rolePermissions.some(
+          (permission) => permission.field_config_id === fieldConfig.id && permission.can_edit
+        )
+      )
+      .map((fieldConfig) => String(fieldConfig.source_column_id))
       .filter((id) => liveColumnIds.has(id))
   );
 

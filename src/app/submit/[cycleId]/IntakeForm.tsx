@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { put } from "@vercel/blob/client";
 import { sanitizeRichTextHtml } from "@/lib/rich-text";
 import type { SavedLayoutJson } from "@/lib/layout";
-import { bindFieldsToLayout } from "@/lib/layout-runtime";
+import { bindFieldsToLayout, getBoundRowDesktopColumnCount } from "@/lib/layout-runtime";
 
 interface Field {
   field_key: string;
@@ -331,13 +331,14 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
           {layoutRows.map((row) => {
             const rowItems = row.items;
+            const desktopColumns = getBoundRowDesktopColumnCount(row);
             return (
               <div
                 key={row.row_key}
                 className={
-                  rowItems.length === 3
+                  desktopColumns === 3
                     ? "grid gap-6 md:col-span-2 md:grid-cols-3"
-                    : rowItems.length === 2
+                    : desktopColumns === 2
                       ? "grid gap-6 md:col-span-2 md:grid-cols-2"
                     : "md:col-span-2"
                 }
@@ -350,7 +351,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             return (
               <div
                 key={field.field_key}
-                className={rowItems.length === 1 ? "md:col-span-2" : ""}
+                className={desktopColumns === 1 ? "md:col-span-2" : ""}
               >
                 <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}

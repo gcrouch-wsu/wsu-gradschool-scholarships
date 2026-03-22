@@ -22,6 +22,19 @@ interface BoundLayoutSection<T> extends SectionLike {
   rows: BoundLayoutRow<T>[];
 }
 
+export function getBoundRowDesktopColumnCount(
+  row: { items: Array<{ width: LayoutWidth }> }
+): 1 | 2 | 3 {
+  const widths = row.items.map((item) => item.width);
+  if (widths.length > 0 && widths.every((width) => width === "third")) {
+    return 3;
+  }
+  if (widths.length > 0 && widths.every((width) => width === "half")) {
+    return 2;
+  }
+  return 1;
+}
+
 export function bindFieldsToLayout<T>(args: {
   layoutJson: SavedLayoutJson | null | undefined;
   fields: T[];

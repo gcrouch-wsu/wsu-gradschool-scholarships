@@ -3,6 +3,7 @@
  */
 import { query } from "./db";
 import { decrypt } from "./encryption";
+import { getEffectiveReviewerConfig } from "./reviewer-config";
 import { getSheetRows, getSheetSchema } from "./smartsheet";
 
 /** Fetch live column IDs from Smartsheet for a cycle. Returns null if fetch fails. Uses strings to avoid BIGINT/Number mismatch. */
@@ -68,32 +69,54 @@ export async function getReviewerNominees(
     return null;
   }
 
-  const { rows: identityFields } = await query<{
-    source_column_id: number;
-    field_key: string;
-  }>(
-    `SELECT source_column_id, field_key FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
-     AND fc.purpose IN ('identity', 'subtitle')`,
-    [cycleId, membership[0]!.role_id]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const rolePermissions = effectiveConfig.permissions.filter(
+    (permission) => permission.role_id === membership[0]!.role_id
   );
+  const viewableFieldIds = new Set(
+    rolePermissions
+      .filter((permission) => permission.can_view)
+      .map((permission) => permission.field_config_id)
+  );
+  const viewSettings = effectiveConfig.viewConfig?.settings_json as {
+    blindReview?: boolean;
+    hiddenFieldKeys?: string[];
+  } | null;
+  const blindReview = viewSettings?.blindReview ?? false;
+  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
+  const identityFields = effectiveConfig.fieldConfigs
+    .filter(
+      (fieldConfig) =>
+        viewableFieldIds.has(fieldConfig.id) &&
+        (fieldConfig.purpose === "identity" || fieldConfig.purpose === "subtitle") &&
+        (!blindReview || !hiddenFieldKeys.has(fieldConfig.field_key))
+    )
+    .map((fieldConfig) => ({
+      source_column_id: fieldConfig.source_column_id,
+      field_key: fieldConfig.field_key,
+    }));
 
   const result = await getSheetRows(token, cycle.sheet_id);
   if (!result.ok || !result.rows) return null;
 
-  return result.rows.map((row) => {
+  return result.rows.map((row, index) => {
     const identity: Record<string, unknown> = {};
-    let displayName = "";
     for (const f of identityFields) {
-      const val = row.cells[f.source_column_id] ?? "";
-      identity[f.field_key] = val;
-      if (!displayName && val) displayName = String(val);
+      identity[f.field_key] = row.cells[f.source_column_id] ?? "";
     }
-    if (!displayName) displayName = `Row ${row.id}`;
+    const firstIdentityValue = Object.values(identity).find(
+      (value) => value != null && String(value).trim() !== ""
+    );
+    const displayName = blindReview
+      ? `Applicant ${index + 1}`
+      : (identity.name as string) ||
+        (identity.title as string) ||
+        (identity["Applicant Name"] as string) ||
+        (firstIdentityValue != null ? String(firstIdentityValue) : null) ||
+        `Row ${row.id}`;
     return {
       id: row.id,
-      displayName,
+      displayName: String(displayName),
       identity,
     };
   });

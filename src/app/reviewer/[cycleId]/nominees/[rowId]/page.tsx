@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { getReviewerNominees } from "@/lib/reviewer";
+import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import { ReviewerScoreForm } from "./ReviewerScoreForm";
 
 function getReviewerPageTitle(
@@ -27,12 +28,9 @@ export async function generateMetadata({
   if (!user) return { title: "Review nominee" };
   const rowIdNum = parseInt(rowId, 10);
   if (isNaN(rowIdNum)) return { title: "Review nominee" };
-  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
-    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
-    [cycleId]
-  );
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
   const blindReview =
-    ((viewConfigs[0]?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
+    ((effectiveConfig.viewConfig?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
   return { title: getReviewerPageTitle(nominees, rowIdNum, blindReview) };
 }
@@ -66,12 +64,9 @@ export default async function ReviewerNomineePage({
   const assignment = rows[0];
   if (!assignment) notFound();
 
-  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
-    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
-    [cycleId]
-  );
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
   const blindReview =
-    ((viewConfigs[0]?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
+    ((effectiveConfig.viewConfig?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
   const displayTitle = getReviewerPageTitle(nominees, rowIdNum, blindReview);
 

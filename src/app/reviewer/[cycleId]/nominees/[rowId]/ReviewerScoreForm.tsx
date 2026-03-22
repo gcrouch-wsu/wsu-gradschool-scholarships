@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { SavedLayoutJson } from "@/lib/layout";
-import { bindFieldsToLayout } from "@/lib/layout-runtime";
+import { bindFieldsToLayout, getBoundRowDesktopColumnCount } from "@/lib/layout-runtime";
 
 type SaveState = "idle" | "unsaved_changes" | "saving" | "saved" | "failed";
 
@@ -324,14 +324,15 @@ export function ReviewerScoreForm({
     );
   }
 
-  function renderRow(row: { row_key: string; items: Array<{ field: Field }> }) {
+  function renderRow(row: { row_key: string; items: Array<{ field: Field; width: "full" | "half" | "third" }> }) {
+    const desktopColumns = getBoundRowDesktopColumnCount(row);
     return (
       <div
         key={row.row_key}
         className={
-          row.items.length === 3
+          desktopColumns === 3
             ? "grid gap-4 md:grid-cols-3"
-            : row.items.length === 2
+            : desktopColumns === 2
               ? "grid gap-4 md:grid-cols-2"
               : "space-y-4"
         }

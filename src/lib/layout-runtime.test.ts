@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeDraftLayout } from "./layout-editor";
-import { bindFieldsToLayout } from "./layout-runtime";
+import { bindFieldsToLayout, getBoundRowDesktopColumnCount } from "./layout-runtime";
 import type { DraftLayoutJson } from "./layout-editor";
 
 describe("layout runtime helpers", () => {
@@ -148,5 +148,41 @@ describe("layout runtime helpers", () => {
       "third",
       "third",
     ]);
+  });
+
+  it("preserves desktop row width even when some fields are hidden", () => {
+    const layout = {
+      version: 1 as const,
+      sections: [
+        {
+          section_key: "main",
+          label: "Main",
+          sort_order: 0,
+          rows: [
+            {
+              row_key: "row_1",
+              items: [
+                { item_key: "item_1", field_key: "email", width: "third" as const },
+                { item_key: "item_2", field_key: "student_id", width: "third" as const },
+                { item_key: "item_3", field_key: "term", width: "third" as const },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const bound = bindFieldsToLayout({
+      layoutJson: layout,
+      fields: [
+        { fieldKey: "email", label: "Email" },
+        { fieldKey: "term", label: "Term" },
+      ],
+      getFieldKey: (field) => field.fieldKey,
+      sections: [{ section_key: "main", label: "Main", sort_order: 0 }],
+    });
+
+    expect(bound.sections[0]?.rows).toHaveLength(1);
+    expect(getBoundRowDesktopColumnCount(bound.sections[0]!.rows[0]!)).toBe(3);
   });
 });
