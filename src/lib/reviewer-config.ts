@@ -72,7 +72,8 @@ function isSavedLayoutJson(value: unknown): value is SavedLayoutJson {
 function normalizeSnapshot(snapshot: SnapshotShape, publishedConfigVersionId: string): EffectiveReviewerConfig | null {
   const fieldConfigs = Array.isArray(snapshot.fieldConfigs) ? snapshot.fieldConfigs : [];
   const permissions = Array.isArray(snapshot.permissions) ? snapshot.permissions : [];
-  let viewSections = Array.isArray(snapshot.viewSections) ? snapshot.viewSections : [];
+  const rawViewSections = Array.isArray(snapshot.viewSections) ? snapshot.viewSections : [];
+  let viewSections = rawViewSections;
   let sectionFields = Array.isArray(snapshot.sectionFields) ? snapshot.sectionFields : [];
   const rawViewConfig = Array.isArray(snapshot.viewConfigs) ? snapshot.viewConfigs[0] ?? null : null;
   const snapshotLayout = isSavedLayoutJson(snapshot.layout_json) ? snapshot.layout_json : null;
@@ -85,16 +86,17 @@ function normalizeSnapshot(snapshot: SnapshotShape, publishedConfigVersionId: st
     fieldConfigs.map((fieldConfig) => [fieldConfig.field_key, fieldConfig.id])
   );
 
-  if (snapshotLayout && viewSections.length === 0) {
+  if (snapshotLayout) {
+    const existingSectionIdByKey = new Map(
+      rawViewSections.map((section) => [section.section_key, section.id])
+    );
     viewSections = snapshotLayout.sections.map((section, index) => ({
-      id: `snapshot_section_${index}`,
+      id: existingSectionIdByKey.get(section.section_key) ?? `snapshot_section_${index}`,
       section_key: section.section_key,
       label: section.label,
       sort_order: section.sort_order ?? index,
     }));
-  }
 
-  if (snapshotLayout && sectionFields.length === 0 && viewSections.length > 0) {
     const viewSectionIdByKey = new Map(
       viewSections.map((section) => [section.section_key, section.id])
     );
