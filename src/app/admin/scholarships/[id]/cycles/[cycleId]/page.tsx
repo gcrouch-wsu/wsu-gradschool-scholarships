@@ -15,6 +15,10 @@ import { RemoveAssignmentButton } from "./RemoveAssignmentButton";
 import { SchemaDriftWarning } from "./SchemaDriftWarning";
 import { RenameCycleForm } from "./RenameCycleForm";
 import { DeleteCycleButton } from "./DeleteCycleButton";
+import {
+  getIntakeSchemaStatus,
+  INTAKE_SCHEMA_UNAVAILABLE_MESSAGE,
+} from "@/lib/intake-schema";
 
 function SetupStep({
   done,
@@ -157,15 +161,25 @@ export default async function CycleDetailPage({
     [cycleId]
   );
 
-  const { rows: intakeForms } = await query<{
-    status: string;
-    published_version_id: string | null;
-    updated_at: string;
-  }>(
-    "SELECT status, published_version_id, updated_at FROM intake_forms WHERE cycle_id = $1",
-    [cycleId]
-  );
-  const intakeForm = intakeForms[0];
+  const intakeSchema = await getIntakeSchemaStatus();
+  let intakeForm:
+    | {
+        status: string;
+        published_version_id: string | null;
+        updated_at: string;
+      }
+    | undefined;
+  if (intakeSchema.available) {
+    const { rows: intakeForms } = await query<{
+      status: string;
+      published_version_id: string | null;
+      updated_at: string;
+    }>(
+      "SELECT status, published_version_id, updated_at FROM intake_forms WHERE cycle_id = $1",
+      [cycleId]
+    );
+    intakeForm = intakeForms[0];
+  }
 
   const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
   const blindReview = viewSettings?.blindReview ?? false;
@@ -296,6 +310,13 @@ export default async function CycleDetailPage({
           <p className="mt-1 text-sm text-zinc-600">
             Build a public-facing form to collect nominations directly into your Smartsheet.
           </p>
+          {!intakeSchema.available && (
+            <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {INTAKE_SCHEMA_UNAVAILABLE_MESSAGE}
+            </div>
+          )}
+          {intakeSchema.available && (
+            <>
           <div className="mt-4 flex flex-wrap items-center gap-4">
             <Link
               href={`/admin/scholarships/${programId}/cycles/${cycleId}/intake-form`}
@@ -331,6 +352,8 @@ export default async function CycleDetailPage({
                 {/* Note: In a real browser we would use navigator.clipboard, but for now we just show it */}
               </div>
             </div>
+          )}
+            </>
           )}
         </section>
 

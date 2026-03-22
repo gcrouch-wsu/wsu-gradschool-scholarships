@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { checkRateLimit, processSubmission } from "@/lib/intake";
+import {
+  formatIntakeSchemaUnavailableMessage,
+  getIntakeSchemaStatus,
+} from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
 
@@ -18,6 +22,13 @@ export async function GET(
   { params }: { params: Promise<{ cycleId: string }> }
 ) {
   const { cycleId } = await params;
+  const intakeSchema = await getIntakeSchemaStatus();
+  if (!intakeSchema.available) {
+    return NextResponse.json(
+      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+      { status: 503 }
+    );
+  }
 
   // Get intake form and its published version
   const { rows } = await query<any>(
@@ -69,6 +80,13 @@ export async function POST(
   { params }: { params: Promise<{ cycleId: string }> }
 ) {
   const { cycleId } = await params;
+  const intakeSchema = await getIntakeSchemaStatus();
+  if (!intakeSchema.available) {
+    return NextResponse.json(
+      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+      { status: 503 }
+    );
+  }
   const ip = getClientIp(request);
 
   // 14.1 Public abuse controls: Rate limiting

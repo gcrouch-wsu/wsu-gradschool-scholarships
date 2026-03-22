@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { list, del } from "@vercel/blob";
 import { query } from "@/lib/db";
+import { getIntakeSchemaStatus } from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,16 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const intakeSchema = await getIntakeSchemaStatus();
+  if (!intakeSchema.available) {
+    return NextResponse.json({
+      processed: 0,
+      deleted: 0,
+      pathnames: [],
+      skipped: true,
+      reason: "intake schema unavailable",
+    });
   }
 
   const { blobs } = await list({ prefix: "intake/", token: process.env.BLOB_READ_WRITE_TOKEN });

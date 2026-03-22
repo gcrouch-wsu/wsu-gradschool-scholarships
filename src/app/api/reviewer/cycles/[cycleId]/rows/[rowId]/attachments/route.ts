@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { createSignedIntakeFileUrl } from "@/lib/intake";
+import { getIntakeSchemaStatus } from "@/lib/intake-schema";
 import { getRowAttachments } from "@/lib/smartsheet";
 
 export async function GET(
@@ -86,13 +87,18 @@ export async function GET(
   }
 
   // 11.3 Attachment visibility: Merge Smartsheet and intake-upload files
-  const { rows: intakeFiles } = await query<{
-    id: string;
-    original_filename: string;
-  }>(
-    "SELECT id, original_filename FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2",
-    [cycleId, rowIdNum]
-  );
+  const intakeSchema = await getIntakeSchemaStatus();
+  const intakeFiles = intakeSchema.available
+    ? (
+        await query<{
+          id: string;
+          original_filename: string;
+        }>(
+          "SELECT id, original_filename FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2",
+          [cycleId, rowIdNum]
+        )
+      ).rows
+    : [];
 
   const merged = [
     ...(result.attachments ?? []).map((a) => ({
