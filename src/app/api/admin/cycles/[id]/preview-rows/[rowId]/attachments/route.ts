@@ -5,6 +5,10 @@ import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { createSignedIntakeFileUrl } from "@/lib/intake";
 import { getIntakeSchemaStatus } from "@/lib/intake-schema";
+import {
+  createSignedReviewerFileUrl,
+  getReviewerAttachmentSchemaStatus,
+} from "@/lib/reviewer-attachments";
 import { getRowAttachments } from "@/lib/smartsheet";
 
 export async function GET(
@@ -101,6 +105,19 @@ export async function GET(
         )
       ).rows
     : [];
+  const reviewerAttachmentSchema = await getReviewerAttachmentSchemaStatus();
+  const reviewerFiles = reviewerAttachmentSchema.available
+    ? (
+        await query<{
+          id: string;
+          original_filename: string;
+          content_type: string;
+        }>(
+          "SELECT id, original_filename, content_type FROM reviewer_row_files WHERE cycle_id = $1 AND smartsheet_row_id = $2 ORDER BY created_at ASC",
+          [cycleId, rowIdNum]
+        )
+      ).rows
+    : [];
 
   const merged = [
     ...(result.attachments ?? []).map((a) => ({
@@ -116,6 +133,13 @@ export async function GET(
       url: createSignedIntakeFileUrl(f.id),
       source: "intake_upload" as const,
       mimeType: "application/pdf",
+    })),
+    ...reviewerFiles.map((f) => ({
+      id: f.id,
+      name: f.original_filename,
+      url: createSignedReviewerFileUrl(f.id),
+      source: "reviewer_upload" as const,
+      mimeType: f.content_type,
     })),
   ];
 

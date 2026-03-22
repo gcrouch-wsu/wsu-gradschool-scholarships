@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
+import { getReviewerAttachmentSchemaStatus } from "@/lib/reviewer-attachments";
 
 export async function GET(
   _request: Request,
@@ -136,16 +137,20 @@ export async function GET(
   const showAttachments = fieldConfigs.some(
     (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
   );
+  const reviewerAttachmentSchema = await getReviewerAttachmentSchemaStatus();
+  const canUploadAttachments = reviewerAttachmentSchema.available && showAttachments;
 
   const viewSettings = viewConfigs[0]?.settings_json as {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
+    hiddenFieldKeys?: string[];
     blindReview?: boolean;
   } | null;
   const blindReview = viewSettings?.blindReview ?? false;
+  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
 
   const fieldsForReview = blindReview
-    ? validFields.filter((f) => f.purpose !== "identity" && f.purpose !== "subtitle")
+    ? validFields.filter((f) => !hiddenFieldKeys.has(f.field_key))
     : validFields;
 
   return NextResponse.json({
@@ -153,6 +158,7 @@ export async function GET(
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,
+    canUploadAttachments,
     viewType: viewConfigs[0]?.view_type ?? "tabbed",
     viewSections: viewSections.map((s) => ({
       section_key: s.section_key,

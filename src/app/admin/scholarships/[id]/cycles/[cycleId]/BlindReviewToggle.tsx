@@ -28,7 +28,7 @@ export function BlindReviewToggle({ cycleId, blindReview }: BlindReviewTogglePro
         className="rounded border-zinc-300"
       />
       <span className="text-sm">
-        Blind review (hide nominee names to reduce bias)
+        Blind review (hide selected reviewer fields)
       </span>
     </label>
   );

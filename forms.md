@@ -559,6 +559,10 @@ Reason:
 
 This is the final v1 decision.
 
+Future extension:
+
+- if the team decides to mirror staged PDFs into Smartsheet as native `FILE` attachments later, use [smartsheet-native-attachments.md](/C:/python%20projects/vercel/scholarship-review-platform/smartsheet-native-attachments.md) as the build spec
+
 ### 11.5 Orphan cleanup
 
 A scheduled cleanup job must:

@@ -98,8 +98,12 @@ export async function GET(
     "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
     [cycleId]
   );
-  const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
+  const viewSettings = viewConfigs[0]?.settings_json as {
+    blindReview?: boolean;
+    hiddenFieldKeys?: string[];
+  } | null;
   const blindReview = viewSettings?.blindReview ?? false;
+  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
 
   const { rows: sectionFields } = await query<{
     view_section_id: string;
@@ -135,7 +139,7 @@ export async function GET(
 
   const validConfigs = fieldConfigs.filter((f) => liveColumnIds.has(String(f.source_column_id)));
   const configsForReview = blindReview
-    ? validConfigs.filter((f) => f.purpose !== "identity" && f.purpose !== "subtitle")
+    ? validConfigs.filter((f) => !hiddenFieldKeys.has(f.field_key))
     : validConfigs;
   const fields = configsForReview.map((f) => ({
     fieldKey: f.field_key,

@@ -171,6 +171,7 @@ interface MappedField {
   fieldKey: string;
   sectionKey?: string;
   pinned?: boolean;
+  hiddenInBlindReview?: boolean;
   permissions?: Array<{ roleId: string; canView: boolean; canEdit: boolean }>;
 }
 
@@ -188,14 +189,19 @@ function LayoutPreview({
   columns,
   sections,
   colors,
+  blindReviewEnabled,
 }: {
   mapped: MappedField[];
   viewType: string;
   columns: Column[];
   sections: ViewSection[];
   colors: LayoutColors;
+  blindReviewEnabled?: boolean;
 }) {
   const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
+  const previewMapped = blindReviewEnabled
+    ? mapped.filter((m) => !m.hiddenInBlindReview)
+    : mapped;
   const tabList = sections.length > 0
     ? sections
     : [
@@ -208,12 +214,12 @@ function LayoutPreview({
     return col?.options ?? [];
   }
 
-  if (mapped.length === 0) {
+  if (previewMapped.length === 0) {
     return <p className="text-sm text-zinc-500">No fields mapped yet.</p>;
   }
 
-  const pinnedFields = mapped.filter((m) => m.pinned);
-  const unpinned = mapped.filter((m) => !m.pinned);
+  const pinnedFields = previewMapped.filter((m) => m.pinned);
+  const unpinned = previewMapped.filter((m) => !m.pinned);
 
   const fieldsBySection = tabList.reduce((acc, s) => {
     acc[s.section_key] = unpinned.filter((m) => (m.sectionKey || tabList[0]?.section_key) === s.section_key);
@@ -485,7 +491,15 @@ export function FieldMappingBuilder({
     columns: Column[];
     fieldConfigs: FieldConfig[];
     roles: Role[];
-    viewConfigs: { view_type: string; settings_json?: { colors?: LayoutColors; pinnedFieldKeys?: string[]; blindReview?: boolean } | null }[];
+    viewConfigs: {
+      view_type: string;
+      settings_json?: {
+        colors?: LayoutColors;
+        pinnedFieldKeys?: string[];
+        hiddenFieldKeys?: string[];
+        blindReview?: boolean;
+      } | null;
+    }[];
     viewSections?: ViewSection[];
     sectionFields?: Array<{ view_section_id: string; field_config_id: string; sort_order: number }>;
   } | null>(null);
@@ -521,11 +535,13 @@ export function FieldMappingBuilder({
       .then((d) => {
         setData(d);
         let pinnedFieldKeys: string[] = [];
+        let hiddenFieldKeys: string[] = [];
         if (d.viewConfigs?.[0]) {
           setViewType(d.viewConfigs[0].view_type);
           const settings = d.viewConfigs[0].settings_json;
           if (settings?.colors) setColors({ ...DEFAULT_COLORS, ...settings.colors });
           pinnedFieldKeys = settings?.pinnedFieldKeys ?? [];
+          hiddenFieldKeys = settings?.hiddenFieldKeys ?? [];
           if (settings?.purposeOverrides) setPurposeOverrides(settings.purposeOverrides);
           setBlindReviewEnabled(settings?.blindReview === true);
         }
@@ -577,6 +593,7 @@ export function FieldMappingBuilder({
               fieldKey: fc.field_key,
               sectionKey: sectionByFieldId[fc.id],
               pinned: pinnedFieldKeys.includes(fc.field_key),
+              hiddenInBlindReview: hiddenFieldKeys.includes(fc.field_key),
               permissions: permsByField[fc.id],
             }))
           );
@@ -664,7 +681,7 @@ export function FieldMappingBuilder({
   function isPurposeEditable(purpose: string): boolean {
     const override = purposeOverrides[purpose];
     if (override?.editable !== undefined) return override.editable;
-    return purpose === "score" || purpose === "comments";
+    return purpose === "score" || purpose === "comments" || purpose === "attachment";
   }
 
   function getPurposeLabel(purpose: string): string {
@@ -697,6 +714,7 @@ export function FieldMappingBuilder({
         body: JSON.stringify({
           colors,
           pinnedFieldKeys: mapped.filter((m) => m.pinned).map((m) => m.fieldKey),
+          hiddenFieldKeys: mapped.filter((m) => m.hiddenInBlindReview).map((m) => m.fieldKey),
           fieldConfigs: mapped.map((m, i) => {
             const ensured = ensurePermissions(m);
             return {
@@ -744,8 +762,8 @@ export function FieldMappingBuilder({
   const usesSections = ["tabbed", "stacked", "accordion"].includes(viewType);
   const gridColsBase = "20px minmax(120px,1fr) minmax(70px,1fr) 50px minmax(100px,1fr) minmax(120px,1.5fr)";
   const gridColsFull = usesSections
-    ? `${gridColsBase} minmax(100px,1fr) 60px auto`
-    : `${gridColsBase} 60px auto`;
+    ? `${gridColsBase} minmax(100px,1fr) 60px 70px auto`
+    : `${gridColsBase} 60px 70px auto`;
 
   return (
     <div className="mt-6 space-y-4">
@@ -785,8 +803,8 @@ export function FieldMappingBuilder({
         <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${blindReviewEnabled ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
           Blind review is <strong>{blindReviewEnabled ? "ON" : "OFF"}</strong>.
           {blindReviewEnabled
-            ? " Fields marked Identity or Subtitle will be hidden from reviewers."
-            : " Identity and Subtitle fields will remain visible to reviewers unless you enable blind review on the cycle page."}
+            ? " Only columns marked Hide will be hidden from reviewers."
+            : " No columns are hidden unless you enable blind review on the cycle page."}
         </div>
         <div className="mb-4 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-2">
           {PURPOSES.map((p) => (
@@ -852,6 +870,7 @@ export function FieldMappingBuilder({
             <span>Display label</span>
             {usesSections && <span>Section</span>}
             <span>Header</span>
+            <span>Blind</span>
             <span />
           </div>
           {mapped.map((m, idx) => {
@@ -940,11 +959,6 @@ export function FieldMappingBuilder({
                       ));
                     })()}
                   </select>
-                  {blindReviewEnabled && (m.purpose === "identity" || m.purpose === "subtitle") && (
-                    <span className="text-[11px] text-amber-700">
-                      Hidden from reviewers while blind review is enabled.
-                    </span>
-                  )}
                 </div>
                 <input
                   type="text"
@@ -978,6 +992,15 @@ export function FieldMappingBuilder({
                     className="rounded border-zinc-300"
                   />
                   <span className="text-xs text-zinc-500">Pin</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-1" title="Hide this field from reviewers when blind review is enabled">
+                  <input
+                    type="checkbox"
+                    checked={m.hiddenInBlindReview ?? false}
+                    onChange={(e) => updateMapping(idx, { hiddenInBlindReview: e.target.checked })}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-xs text-zinc-500">Hide</span>
                 </label>
                 <button
                   type="button"
@@ -1101,7 +1124,14 @@ export function FieldMappingBuilder({
         <p className="mb-3 text-sm text-zinc-600">
           Preview updates when you change the layout template. Score dropdowns show options from the Smartsheet column.
         </p>
-        <LayoutPreview mapped={mapped} viewType={viewType} columns={columns} sections={sections} colors={colors} />
+        <LayoutPreview
+          mapped={mapped}
+          viewType={viewType}
+          columns={columns}
+          sections={sections}
+          colors={colors}
+          blindReviewEnabled={blindReviewEnabled}
+        />
       </AccordionCard>
 
       {error && (

@@ -101,6 +101,7 @@ These rules are shared with `smartsheets_view`, but this repo only implements a 
 - **MULTI_CONTACT_LIST** requires `objectValue: { objectType: "MULTI_CONTACT", values: [...] }` with `values` plural.
 - **Clearing MULTI_CONTACT_LIST** must use `{ "value": "" }`. Sending `values: []` causes Smartsheet error 1012.
 - **URL attachments are not file uploads**. If a future intake flow mirrors Blob files into Smartsheet as URL attachments, downstream APIs and UIs must handle LINK attachments explicitly. Do not assume file-style signed `attachment.url` values will exist.
+- The recommended future direction is **native Smartsheet `FILE` attachment mirroring**, not LINK attachments. See [smartsheet-native-attachments.md](/C:/python%20projects/vercel/scholarship-review-platform/smartsheet-native-attachments.md).
 
 ---
 

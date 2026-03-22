@@ -67,6 +67,12 @@ export async function PUT(
     if (typeof f.label !== "string" || f.label.trim() === "") {
       return NextResponse.json({ error: `Field "${f.field_key}" is missing a label` }, { status: 400 });
     }
+    if (
+      f.settings_json?.layout_mode !== undefined &&
+      !["full", "left", "right"].includes(f.settings_json.layout_mode)
+    ) {
+      return NextResponse.json({ error: `Field "${f.label}" has an invalid desktop layout` }, { status: 400 });
+    }
 
     if (f.field_type === "file") {
       if (f.target_column_id || f.target_column_title || f.target_column_type) {

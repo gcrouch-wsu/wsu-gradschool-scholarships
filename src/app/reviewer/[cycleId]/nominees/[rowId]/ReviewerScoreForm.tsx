@@ -1,5 +1,6 @@
 "use client";
 
+import { put } from "@vercel/blob/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,11 +55,30 @@ export function ReviewerScoreForm({
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [nomineeIds, setNomineeIds] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<{ id: string; name: string; url?: string; source?: string }[]>([]);
+  const [canUploadAttachments, setCanUploadAttachments] = useState(false);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [viewType, setViewType] = useState<string>("tabbed");
   const [viewSections, setViewSections] = useState<ViewSection[]>([]);
   const [activeTab, setActiveTab] = useState<string>("main");
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const loadAttachments = useCallback(async (shouldShowAttachments: boolean) => {
+    if (!shouldShowAttachments) {
+      setAttachments([]);
+      return;
+    }
+
+    const attRes = await fetch(`/api/reviewer/cycles/${cycleId}/rows/${rowId}/attachments`);
+    const attachmentsData = attRes.ok ? await attRes.json() : { attachments: [] };
+    setAttachments((attachmentsData.attachments ?? []).map((a: { id: number | string; name: string; url?: string; source?: string }) => ({
+      ...a,
+      id: String(a.id),
+    })));
+  }, [cycleId, rowId]);
 
   const loadRow = useCallback(async () => {
     setLoading(true);
@@ -82,13 +102,7 @@ export function ReviewerScoreForm({
       const configData = await configRes.json();
       const rowData = await rowRes.json();
       const rowsData = rowsRes.ok ? await rowsRes.json() : { rows: [] };
-      let attachmentsData: { attachments: { id: number; name: string; url?: string }[] } = {
-        attachments: [],
-      };
-      if (configData.showAttachments === true) {
-        const attRes = await fetch(`/api/reviewer/cycles/${cycleId}/rows/${rowId}/attachments`);
-        attachmentsData = attRes.ok ? await attRes.json() : { attachments: [] };
-      }
+      await loadAttachments(configData.showAttachments === true);
       setColumnOptions(configData.columnOptions ?? {});
       const fieldsData = rowData.fields ?? [];
       setFields(fieldsData);
@@ -99,6 +113,7 @@ export function ReviewerScoreForm({
       if (vSections.length > 0) setActiveTab(vSections[0].section_key);
       setColors({ ...DEFAULT_COLORS, ...(configData.colors ?? {}) });
       setPinnedFieldKeys(configData.pinnedFieldKeys ?? []);
+      setCanUploadAttachments(configData.canUploadAttachments === true);
       const initial: Record<number, unknown> = {};
       for (const f of fieldsData) {
         initial[f.sourceColumnId] = f.value;
@@ -106,13 +121,12 @@ export function ReviewerScoreForm({
       setEdits(initial);
       setLoadedAt(rowData.loadedAt ?? null);
       setNomineeIds((rowsData.rows ?? []).map((r: { id: number }) => r.id));
-      setAttachments((attachmentsData.attachments ?? []).map(a => ({ ...a, id: String(a.id) })));
     } catch {
       setError("Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [cycleId, rowId]);
+  }, [cycleId, rowId, loadAttachments]);
 
   useEffect(() => {
     loadRow();
@@ -122,6 +136,64 @@ export function ReviewerScoreForm({
     setEdits((prev) => ({ ...prev, [columnId]: value }));
     setSaveState("unsaved_changes");
     setError(null);
+  }
+
+  async function uploadAttachmentFiles(selectedFiles: File[]) {
+    if (!canUploadAttachments || selectedFiles.length === 0) return;
+
+    setAttachmentError(null);
+    setUploadingAttachments(true);
+    try {
+      for (const file of selectedFiles) {
+        const uploadId = crypto.randomUUID();
+        const tokenRes = await fetch(`/api/reviewer/cycles/${cycleId}/rows/${rowId}/attachments/upload-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+            uploadId,
+          }),
+        });
+        if (!tokenRes.ok) {
+          const data = await tokenRes.json();
+          throw new Error(data.error || "Failed to authorize attachment upload");
+        }
+
+        const { token, pathname } = await tokenRes.json();
+        const blob = await put(pathname, file, {
+          access: "private",
+          token,
+          contentType: file.type || "application/octet-stream",
+          multipart: true,
+        });
+
+        const finalizeRes = await fetch(`/api/reviewer/cycles/${cycleId}/rows/${rowId}/attachments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uploadId,
+            blobPathname: blob.pathname,
+            originalFilename: file.name,
+            contentType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+          }),
+        });
+        if (!finalizeRes.ok) {
+          const data = await finalizeRes.json();
+          throw new Error(data.error || "Failed to attach uploaded file");
+        }
+      }
+
+      await loadAttachments(true);
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : "Failed to upload attachment");
+    } finally {
+      setUploadingAttachments(false);
+      setAttachmentDragActive(false);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
   }
 
   async function handleSave(andNext: boolean) {
@@ -290,9 +362,60 @@ export function ReviewerScoreForm({
           </div>
         </div>
       )}
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || canUploadAttachments) && (
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
           <h2 className="mb-3 font-medium text-zinc-900">Attachments</h2>
+          {canUploadAttachments && (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!uploadingAttachments) setAttachmentDragActive(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setAttachmentDragActive(false);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (uploadingAttachments) return;
+                const droppedFiles = Array.from(e.dataTransfer.files ?? []);
+                void uploadAttachmentFiles(droppedFiles);
+              }}
+              className={`mb-4 rounded-lg border-2 border-dashed px-4 py-5 text-center transition ${
+                attachmentDragActive
+                  ? "border-[var(--wsu-crimson)] bg-rose-50"
+                  : "border-zinc-300 bg-zinc-50"
+              }`}
+            >
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => void uploadAttachmentFiles(Array.from(e.target.files ?? []))}
+              />
+              <p className="text-sm font-medium text-zinc-800">
+                Drag files here to attach them to this nominee
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Stored in secure app storage and shown with the nominee attachments. Max 50 MB per file.
+              </p>
+              <button
+                type="button"
+                onClick={() => attachmentInputRef.current?.click()}
+                disabled={uploadingAttachments}
+                className="mt-3 rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {uploadingAttachments ? "Uploading..." : "Choose files"}
+              </button>
+            </div>
+          )}
+          {attachmentError && (
+            <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {attachmentError}
+            </div>
+          )}
           <ul className="space-y-2">
             {attachments.map((a) => (
               <li key={a.id}>
@@ -310,6 +433,9 @@ export function ReviewerScoreForm({
                 )}
               </li>
             ))}
+            {attachments.length === 0 && (
+              <li className="text-sm text-zinc-500">No attachments yet.</li>
+            )}
           </ul>
         </div>
       )}

@@ -156,10 +156,12 @@ export async function POST(
     sections,
     colors,
     pinnedFieldKeys,
+    hiddenFieldKeys,
     purposeOverrides,
   }: {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
+    hiddenFieldKeys?: string[];
     purposeOverrides?: Record<string, { label?: string; desc?: string; editable?: boolean }>;
     fieldConfigs: Array<{
       fieldKey: string;
@@ -266,6 +268,7 @@ export async function POST(
       [cycleId, vt, "Review", JSON.stringify({
         colors: colors ?? {},
         pinnedFieldKeys: pinnedFieldKeys ?? [],
+        hiddenFieldKeys: Array.isArray(hiddenFieldKeys) ? hiddenFieldKeys : [],
         purposeOverrides: purposeOverrides ?? {},
         ...preserved,
       })]

@@ -48,6 +48,11 @@ function getSelectOptions(field: Field): string[] {
   return options.filter((option): option is string => typeof option === "string");
 }
 
+function getDesktopLayoutMode(field: Field): "full" | "left" | "right" {
+  const mode = field.settings_json?.layout_mode;
+  return mode === "left" || mode === "right" || mode === "full" ? mode : "full";
+}
+
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [submissionId] = useState(() => crypto.randomUUID());
@@ -257,7 +262,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">{schema.title}</h1>
         {instructionsHtml && (
           <div
-            className="mt-4 space-y-3 text-left text-base text-zinc-600"
+            className="mt-4 text-left text-base text-zinc-600 [&_a]:text-[var(--wsu-crimson)] [&_a]:underline [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-3 [&_ul]:list-disc [&_ul]:pl-6"
             dangerouslySetInnerHTML={{ __html: instructionsHtml }}
           />
         )}
@@ -270,7 +275,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
           </div>
         )}
 
-        <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
           {/* Submitter Info */}
           <div className="pb-6 border-b border-zinc-100">
             <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4">Your Information</h2>
@@ -308,7 +313,16 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             const allowMultiple = Boolean(field.settings_json?.multiple);
 
             return (
-              <div key={field.field_key}>
+              <div
+                key={field.field_key}
+                className={
+                  getDesktopLayoutMode(field) === "full"
+                    ? "md:col-span-2"
+                    : getDesktopLayoutMode(field) === "right"
+                      ? "md:col-start-2"
+                      : "md:col-start-1"
+                }
+              >
                 <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}
                 </label>

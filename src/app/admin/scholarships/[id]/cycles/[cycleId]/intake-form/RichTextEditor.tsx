@@ -15,6 +15,7 @@ function ToolbarButton({
   return (
     <button
       type="button"
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       title={title}
       className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
@@ -53,6 +54,7 @@ export function RichTextEditor({
   }
 
   function runCommand(command: string, valueArg?: string) {
+    editorRef.current?.focus();
     document.execCommand(command, false, valueArg);
     syncValue();
     editorRef.current?.focus();
@@ -82,7 +84,7 @@ export function RichTextEditor({
           contentEditable
           suppressContentEditableWarning
           onInput={syncValue}
-          className="min-h-32 w-full px-3 py-3 text-sm text-zinc-900 focus:outline-none"
+          className="min-h-32 w-full px-3 py-3 text-sm text-zinc-900 focus:outline-none [&_a]:text-[var(--wsu-crimson)] [&_a]:underline [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-6"
         />
       </div>
       <p className="mt-2 text-xs text-zinc-500">
