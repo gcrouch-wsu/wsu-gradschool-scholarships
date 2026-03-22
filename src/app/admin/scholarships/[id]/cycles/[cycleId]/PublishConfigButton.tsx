@@ -8,11 +8,13 @@ export function PublishConfigButton({
   latestConfigId,
   publishedConfigId,
   publishedAt,
+  showStatusText = true,
 }: {
   cycleId: string;
   latestConfigId: string | null;
   publishedConfigId: string | null;
   publishedAt: string | null;
+  showStatusText?: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -70,11 +72,24 @@ export function PublishConfigButton({
     <div className="flex flex-wrap items-center gap-2">
       {isPublished ? (
         <>
-          <span className="text-sm font-medium text-green-700">
-            Published{publishedAt ? ` — ${new Date(publishedAt).toLocaleString()}` : ""}
-          </span>
+          {showStatusText && (
+            <span className="text-sm font-medium text-green-700">
+              Published{publishedAt ? ` — ${new Date(publishedAt).toLocaleString()}` : ""}
+            </span>
+          )}
           {!isLatestPublished && (
-            <span className="text-xs text-amber-600">(unsaved changes in builder)</span>
+            <>
+              <span className="text-xs text-amber-600">(draft changes not published)</span>
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={loading}
+                className="rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+                title="Publish the latest reviewer form changes."
+              >
+                {loading ? "Publishing…" : "Publish updates"}
+              </button>
+            </>
           )}
           <button
             type="button"

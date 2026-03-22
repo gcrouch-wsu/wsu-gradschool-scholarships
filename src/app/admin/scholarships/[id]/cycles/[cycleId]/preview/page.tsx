@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { canManageCycle } from "@/lib/admin";
+import { decrypt } from "@/lib/encryption";
 import { PreviewNomineeList } from "./PreviewNomineeList";
 import { PreviewScoreForm } from "./PreviewScoreForm";
+import { getSheetRows } from "@/lib/smartsheet";
 
 export default async function PreviewPage({
   params,
@@ -74,6 +76,28 @@ export default async function PreviewPage({
 
   const rowId = rowParam ? parseInt(rowParam, 10) : null;
   const showDetail = rowId != null && !isNaN(rowId);
+
+  if (!showDetail) {
+    const { rows: connRows } = await query<{ encrypted_credentials: string }>(
+      "SELECT encrypted_credentials FROM connections WHERE id = $1",
+      [cycle.connection_id]
+    );
+    const encryptedCredentials = connRows[0]?.encrypted_credentials;
+    if (encryptedCredentials) {
+      try {
+        const token = decrypt(encryptedCredentials);
+        const result = await getSheetRows(token, cycle.sheet_id);
+        const firstRowId = result.ok ? result.rows?.[0]?.id : null;
+        if (firstRowId != null) {
+          redirect(
+            `/admin/scholarships/${programId}/cycles/${cycleId}/preview?row=${firstRowId}`
+          );
+        }
+      } catch {
+        // Fall through to the list view if preview auto-entry cannot be resolved.
+      }
+    }
+  }
 
   return (
     <div>

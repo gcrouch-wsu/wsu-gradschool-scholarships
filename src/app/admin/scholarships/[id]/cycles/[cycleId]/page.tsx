@@ -394,6 +394,9 @@ export default async function CycleDetailPage({
                   }`}
                 >
                   Status: {reviewerFormStatus}
+                  {reviewerFormStatus === "published" && cycleWithPublished[0]?.published_at
+                    ? ` — ${new Date(cycleWithPublished[0].published_at).toLocaleString()}`
+                    : ""}
                 </span>
                 {reviewerFormStatus === "published" && (
                   <Link
@@ -410,6 +413,7 @@ export default async function CycleDetailPage({
               latestConfigId={latestConfig[0]?.id ?? null}
               publishedConfigId={cycleWithPublished[0]?.published_config_version_id ?? null}
               publishedAt={cycleWithPublished[0]?.published_at ?? null}
+              showStatusText={false}
             />
           </div>
         </section>

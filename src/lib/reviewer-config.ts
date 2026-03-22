@@ -1,4 +1,5 @@
 import { query } from "./db";
+import type { SavedLayoutJson } from "./layout";
 
 export interface ReviewerFieldConfigRecord {
   id: string;
@@ -59,15 +60,66 @@ interface SnapshotShape {
   sectionFields?: ReviewerSectionFieldRecord[];
 }
 
+function isSavedLayoutJson(value: unknown): value is SavedLayoutJson {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      (value as { version?: unknown }).version === 1 &&
+      Array.isArray((value as { sections?: unknown }).sections)
+  );
+}
+
 function normalizeSnapshot(snapshot: SnapshotShape, publishedConfigVersionId: string): EffectiveReviewerConfig | null {
   const fieldConfigs = Array.isArray(snapshot.fieldConfigs) ? snapshot.fieldConfigs : [];
   const permissions = Array.isArray(snapshot.permissions) ? snapshot.permissions : [];
-  const viewSections = Array.isArray(snapshot.viewSections) ? snapshot.viewSections : [];
-  const sectionFields = Array.isArray(snapshot.sectionFields) ? snapshot.sectionFields : [];
+  let viewSections = Array.isArray(snapshot.viewSections) ? snapshot.viewSections : [];
+  let sectionFields = Array.isArray(snapshot.sectionFields) ? snapshot.sectionFields : [];
   const rawViewConfig = Array.isArray(snapshot.viewConfigs) ? snapshot.viewConfigs[0] ?? null : null;
+  const snapshotLayout = isSavedLayoutJson(snapshot.layout_json) ? snapshot.layout_json : null;
 
   if (fieldConfigs.length === 0 || !rawViewConfig) {
     return null;
+  }
+
+  const fieldConfigIdByKey = new Map(
+    fieldConfigs.map((fieldConfig) => [fieldConfig.field_key, fieldConfig.id])
+  );
+
+  if (snapshotLayout && viewSections.length === 0) {
+    viewSections = snapshotLayout.sections.map((section, index) => ({
+      id: `snapshot_section_${index}`,
+      section_key: section.section_key,
+      label: section.label,
+      sort_order: section.sort_order ?? index,
+    }));
+  }
+
+  if (snapshotLayout && sectionFields.length === 0 && viewSections.length > 0) {
+    const viewSectionIdByKey = new Map(
+      viewSections.map((section) => [section.section_key, section.id])
+    );
+    sectionFields = snapshotLayout.sections.flatMap((section) => {
+      const viewSectionId = viewSectionIdByKey.get(section.section_key);
+      if (!viewSectionId) {
+        return [];
+      }
+      let sortOrder = 0;
+      return section.rows.flatMap((row) =>
+        row.items.flatMap((item) => {
+          const fieldConfigId = fieldConfigIdByKey.get(item.field_key);
+          if (!fieldConfigId) {
+            return [];
+          }
+          const record: ReviewerSectionFieldRecord = {
+            view_section_id: viewSectionId,
+            field_config_id: fieldConfigId,
+            sort_order: sortOrder,
+          };
+          sortOrder += 1;
+          return [record];
+        })
+      );
+    });
   }
 
   return {
