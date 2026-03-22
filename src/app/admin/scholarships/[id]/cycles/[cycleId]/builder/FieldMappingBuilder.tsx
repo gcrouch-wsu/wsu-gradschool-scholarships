@@ -320,24 +320,24 @@ function LayoutPreview({
     );
   }
 
-  function renderRow(row: { row_key: string; fields: MappedField[] }) {
-    if (row.fields.length === 2) {
+  function renderRow(row: { row_key: string; items: Array<{ field: MappedField }> }) {
+    if (row.items.length === 2) {
       return (
         <div key={row.row_key} className="grid gap-3 md:grid-cols-2">
-          {row.fields.map(renderField)}
+          {row.items.map(({ field }) => renderField(field))}
         </div>
       );
     }
-    if (row.fields.length === 3) {
+    if (row.items.length === 3) {
       return (
         <div key={row.row_key} className="grid gap-3 md:grid-cols-3">
-          {row.fields.map(renderField)}
+          {row.items.map(({ field }) => renderField(field))}
         </div>
       );
     }
     return (
       <div key={row.row_key} className="space-y-3">
-        {row.fields.map(renderField)}
+        {row.items.map(({ field }) => renderField(field))}
       </div>
     );
   }
@@ -948,10 +948,25 @@ export function FieldMappingBuilder({
         </div>
       </AccordionCard>
 
-      <AccordionCard title="Columns" defaultOpen>
+      <AccordionCard title="Fields" defaultOpen>
         <p className="mb-2 text-xs text-zinc-500">
-          Drag to reorder the field library. Exact reviewer placement is controlled in the Row layout panel.
+          Use one workspace for both field settings and exact row placement. Drag to reorder the field library, then place fields into rows below.
         </p>
+        <RowLayoutEditor
+          layout={layoutDraft}
+          fields={mapped
+            .filter((field) => !field.pinned)
+            .map((field) => ({
+              field_key: field.fieldKey,
+              label: field.displayLabel || field.sourceColumnTitle,
+              badge: getPurposeLabel(field.purpose),
+            }))}
+          sections={sections}
+          onChange={setLayoutDraft}
+          title="Reviewer row layout"
+          description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field, two side-by-side fields, or three compact fields."
+        />
+        <div className="mt-5 border-t border-zinc-100 pt-5">
         <div className="space-y-2">
           <div
             className="grid gap-3 rounded border-b border-zinc-200 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-500"
@@ -1106,6 +1121,7 @@ export function FieldMappingBuilder({
             );
           })}
         </div>
+        </div>
       </AccordionCard>
 
       <AccordionCard title="Layout">
@@ -1170,23 +1186,6 @@ export function FieldMappingBuilder({
             Reset to WSU defaults
           </button>
         </div>
-      </AccordionCard>
-
-      <AccordionCard title="Row layout">
-        <RowLayoutEditor
-          layout={layoutDraft}
-          fields={mapped
-            .filter((field) => !field.pinned)
-            .map((field) => ({
-              field_key: field.fieldKey,
-              label: field.displayLabel || field.sourceColumnTitle,
-              badge: getPurposeLabel(field.purpose),
-            }))}
-          sections={sections}
-          onChange={setLayoutDraft}
-          title="Reviewer rows"
-          description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field, two side-by-side fields, or three compact fields."
-        />
       </AccordionCard>
 
       {usesSections && (
@@ -1256,12 +1255,6 @@ export function FieldMappingBuilder({
         >
           Undo
         </button>
-        <Link
-          href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
-          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          View live form
-        </Link>
         <Link
           href={`/admin/scholarships/${programId}/cycles/${cycleId}`}
           className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"

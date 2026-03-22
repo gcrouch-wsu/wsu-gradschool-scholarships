@@ -184,6 +184,12 @@ export default async function CycleDetailPage({
   const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
   const blindReview = viewSettings?.blindReview ?? false;
   const isCycleActive = cycle.status === "active";
+  const reviewerFormStatus =
+    cycleWithPublished[0]?.published_config_version_id
+      ? "published"
+      : fieldConfigs.length > 0
+        ? "draft"
+        : null;
 
   return (
     <div>
@@ -364,21 +370,32 @@ export default async function CycleDetailPage({
           <p className="mt-1 text-sm text-zinc-600">
             Build the reviewer-facing form. Map Smartsheet columns, set labels and visibility, and control the live reviewer layout.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-4">
             <Link
               href={`/admin/scholarships/${programId}/cycles/${cycleId}/builder`}
-              className="inline-flex items-center gap-2 rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
             >
               Edit reviewer form
               <span aria-hidden>→</span>
             </Link>
-            {fieldConfigs.length > 0 && (
-              <Link
-                href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
-                className="text-blue-600 hover:underline"
-              >
-                {cycleWithPublished[0]?.published_config_version_id ? "View live form" : "View current form"}
-              </Link>
+            {reviewerFormStatus && (
+              <div className="flex items-center gap-2 text-sm">
+                <span
+                  className={`font-medium ${
+                    reviewerFormStatus === "published" ? "text-green-700" : "text-zinc-500"
+                  }`}
+                >
+                  Status: {reviewerFormStatus}
+                </span>
+                {reviewerFormStatus === "published" && (
+                  <Link
+                    href={`/admin/scholarships/${programId}/cycles/${cycleId}/preview`}
+                    className="text-blue-600 hover:underline"
+                  >
+                    View live form
+                  </Link>
+                )}
+              </div>
             )}
             <PublishConfigButton
               cycleId={cycleId}

@@ -244,6 +244,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
     getFieldKey: (field) => field.field_key,
     sections: [{ section_key: "main", label: "Main", sort_order: 0 }],
   });
+  const layoutRows = boundLayout.sections[0]?.rows ?? [];
 
   if (schema.status !== "open") {
     return (
@@ -328,20 +329,20 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
           <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4 md:col-span-2">Nomination Details</h2>
 
-          {boundLayout.sections[0]?.rows.map((row) => {
-            const rowFields = row.fields;
+          {layoutRows.map((row) => {
+            const rowItems = row.items;
             return (
               <div
                 key={row.row_key}
                 className={
-                  rowFields.length === 3
+                  rowItems.length === 3
                     ? "grid gap-6 md:col-span-2 md:grid-cols-3"
-                    : rowFields.length === 2
+                    : rowItems.length === 2
                       ? "grid gap-6 md:col-span-2 md:grid-cols-2"
                     : "md:col-span-2"
                 }
               >
-                {rowFields.map((field) => {
+                {rowItems.map(({ field }) => {
             const id = `field_${field.field_key}`;
             const fieldFiles = files[field.field_key] || [];
             const allowMultiple = Boolean(field.settings_json?.multiple);
@@ -349,7 +350,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             return (
               <div
                 key={field.field_key}
-                className={rowFields.length === 2 ? "" : "md:col-span-2"}
+                className={rowItems.length === 1 ? "md:col-span-2" : ""}
               >
                 <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}

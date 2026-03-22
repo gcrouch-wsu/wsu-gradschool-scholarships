@@ -1,4 +1,4 @@
-import type { SavedLayoutJson } from "./layout";
+import type { LayoutWidth, SavedLayoutJson } from "./layout";
 
 interface SectionLike {
   section_key: string;
@@ -6,8 +6,15 @@ interface SectionLike {
   sort_order: number;
 }
 
+interface BoundLayoutItem<T> {
+  item_key: string;
+  width: LayoutWidth;
+  field: T;
+}
+
 interface BoundLayoutRow<T> {
   row_key: string;
+  items: BoundLayoutItem<T>[];
   fields: T[];
 }
 
@@ -52,19 +59,24 @@ export function bindFieldsToLayout<T>(args: {
     if (!targetSection) continue;
 
     for (const row of section.rows) {
-      const rowFields: T[] = [];
+      const rowItems: BoundLayoutItem<T>[] = [];
       for (const item of row.items) {
         if (!item.field_key || placedFieldKeys.has(item.field_key)) continue;
         const field = unpinnedFieldMap.get(item.field_key);
         if (!field) continue;
         placedFieldKeys.add(item.field_key);
-        rowFields.push(field);
+        rowItems.push({
+          item_key: item.item_key,
+          width: item.width,
+          field,
+        });
       }
 
-      if (rowFields.length > 0) {
+      if (rowItems.length > 0) {
         targetSection.rows.push({
           row_key: row.row_key,
-          fields: rowFields,
+          items: rowItems,
+          fields: rowItems.map((item) => item.field),
         });
       }
     }
@@ -76,6 +88,13 @@ export function bindFieldsToLayout<T>(args: {
       if (placedFieldKeys.has(fieldKey)) continue;
       fallbackSection.rows.push({
         row_key: `fallback_${fieldKey}`,
+        items: [
+          {
+            item_key: `fallback_item_${fieldKey}`,
+            width: "full",
+            field,
+          },
+        ],
         fields: [field],
       });
     }

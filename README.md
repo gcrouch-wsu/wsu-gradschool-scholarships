@@ -1,66 +1,129 @@
 # Scholarship Review Platform
 
-Admin-managed application layer on top of Smartsheet for scholarship-style review workflows. Staff connect sheets, configure display/edit behavior, assign reviewers, and reviewers read/score/comment through a purpose-built interface.
+Admin-managed workflow layer on top of Smartsheet for scholarship-style review cycles. Staff connect a sheet, build a public intake form, configure the reviewer-facing form, assign reviewers, and reviewers score/comment through the app while Smartsheet remains the source of truth for structured row data.
+
+## Current capabilities
+
+- Admin dashboard for programs, cycles, users, connections, templates, and assignments
+- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, and direct write to Smartsheet rows
+- Reviewer form builder with role-aware field behavior, blind-review hiding, row-based layout, publish/unpublish, and version snapshots
+- Reviewer workflow with progress tracking, Save & Next, row-level attachments, and reviewer-uploaded attachments
+- Admin preview and export tools, including ZIP export of intake attachments
+- Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and schema-drift protection
 
 ## Stack
 
-- **Next.js** (App Router) + TypeScript
-- **Postgres** for app state, auth, config, assignments, audit
-- **Smartsheet** as source of truth for row data (server-side proxy only)
-- **Vercel** deployment target
+- Next.js 16 App Router + TypeScript
+- PostgreSQL for app-owned state
+- Smartsheet for structured nominee row data
+- Vercel Blob for private file storage
+- Vercel for deployment
 
-## Setup
+## Build contract
 
-1. Clone and install:
+- `npm run build` is the production build command
+- `package.json` currently runs plain `next build`
+- On Next.js 16, that means Turbopack is the current production bundler for this repo
+- Do not add `--webpack` unless a real production-build regression is reproduced and documented
+
+## Local setup
+
+1. Install dependencies:
 
    ```bash
    npm install
    ```
 
-2. Configure environment (copy `.env.example` to `.env.local` and fill in):
+2. Create `.env.local` and set the required values:
 
-   - `DATABASE_URL` – Postgres connection string
-   - `ENCRYPTION_KEY` – 32+ char key for encrypting Smartsheet tokens (e.g. `openssl rand -hex 32` or `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+   - `DATABASE_URL`: Postgres connection string
+   - `ENCRYPTION_KEY`: 32+ character key used for Smartsheet credential encryption and other signing/hashing
+   - `SEED_ADMIN_PASSWORD`: password for the initial admin created by the seed script
 
-3. Apply schema and seed initial admin:
+   Commonly-needed additional values:
+
+   - `SEED_ADMIN_EMAIL`: optional, defaults to `admin@example.com`
+   - `NEXT_PUBLIC_APP_URL`: app base URL, required for production-facing links and signed file routes
+   - `BLOB_READ_WRITE_TOKEN`: required for intake uploads, reviewer uploads, and attachment export
+   - `CRON_SECRET`: required for protected cron-backed cleanup routes
+   - `ALLOWED_REVIEWER_EMAIL_DOMAIN`: optional reviewer-assignment domain restriction, defaults to `wsu.edu`
+
+3. Initialize a fresh database:
 
    ```bash
    npm run db:seed
    ```
 
-   Requires `SEED_ADMIN_PASSWORD` (min 8 chars). Optional: `SEED_ADMIN_EMAIL` (default: `admin@example.com`).
+   This applies the SQL files in `supabase/migrations/` and seeds the first admin.
 
-4. Run dev server:
+4. Start the dev server:
 
    ```bash
    npm run dev
    ```
 
-5. Log in at `/login` with the seeded admin account.
+5. Log in at `/login`.
 
-For detailed setup (first login, database creation, troubleshooting), see **[instruction.md](instruction.md)**.
+For more detailed local setup and operational notes, see [instruction.md](instruction.md).
 
-## Deploying (Vercel)
+## Database migrations
 
-- **Code changes:** Commit and push to GitHub. Vercel auto-deploys on push.
-- **Environment variable changes:** Redeploy in Vercel (Deployments → ⋮ → Redeploy). No commit needed.
+Current migration set:
 
-## Project structure
+- `001_initial_schema.sql`
+- `002_program_admins.sql`
+- `003_scholarship_templates.sql`
+- `004_program_connections.sql`
+- `005_intake_forms.sql`
+- `006_reviewer_row_files.sql`
+- `007_layout_json.sql`
 
-- `src/app/` – Next.js App Router pages and API routes
-- `src/lib/` – DB, auth, encryption, Smartsheet proxy
-- `supabase/migrations/` – Postgres schema
-- `scripts/` – Seed and utility scripts
+Important: production deploys are not enough by themselves. New code that depends on new tables/columns still requires the matching SQL migration to be applied to the target database.
 
-## Features
+## Recommended local verification
 
-- **Admin:** Programs, cycles, connections, users, assignments, field-mapping builder, config publish/unpublish, blind review, templates
-- **Reviewer:** Assigned cycles, nominee list, scoring and comments, Save & Next, resume where left off, read-only attachments
-- **Security:** Encrypted Smartsheet tokens, httpOnly sessions, server-side field permissions, audit logging
+Before pushing changes that touch routes, layout logic, auth, file handling, or Smartsheet writes:
 
-## Security
+```bash
+npx tsc --noEmit
+npm test
+npm run build
+```
 
-- Smartsheet tokens are server-side only, encrypted in DB
-- Session cookies are httpOnly and secure
-- `.gitignore` excludes `.env`, `token.txt`, local DB files
-- No plaintext secrets in tracked files
+## Deploying on Vercel
+
+- Code changes: commit and push to GitHub, then wait for the Vercel deployment to finish
+- Environment variable changes: add/update them in Vercel, then redeploy
+- Database changes: apply the matching SQL migration to the production database separately
+
+Required production environment variables depend on enabled features, but a typical full deployment needs:
+
+- `DATABASE_URL`
+- `ENCRYPTION_KEY`
+- `NEXT_PUBLIC_APP_URL`
+- `BLOB_READ_WRITE_TOKEN`
+- `CRON_SECRET`
+
+## Repo structure
+
+- `src/app/`: pages and route handlers
+- `src/lib/`: shared business logic, DB access, Smartsheet helpers, layout helpers
+- `src/components/`: reusable UI components
+- `supabase/migrations/`: SQL schema changes
+- `scripts/`: seed and maintenance scripts
+
+## Key docs
+
+- [PROJECT_SPEC.md](PROJECT_SPEC.md): current platform architecture and remaining platform tasks
+- [forms.md](forms.md): intake-form build spec
+- [layout-builder-spec.md](layout-builder-spec.md): shared direction for intake/reviewer layout builders
+- [layout-builder-blueprint.md](layout-builder-blueprint.md): implementation-ready layout blueprint
+- [smartsheet-native-attachments.md](smartsheet-native-attachments.md): future spec for mirroring Blob uploads into native Smartsheet file attachments
+
+## Security notes
+
+- Smartsheet credentials are stored encrypted in Postgres
+- Auth uses DB-backed httpOnly sessions
+- Smartsheet reads/writes are server-side only
+- Intake uploads and reviewer uploads are private Blob objects surfaced through app-controlled routes
+- Audit logs intentionally avoid storing full public submission payloads

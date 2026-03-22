@@ -190,19 +190,19 @@ export function PreviewScoreForm({
     );
   }
 
-  function renderRow(row: { row_key: string; fields: Field[] }) {
+  function renderRow(row: { row_key: string; items: Array<{ field: Field }> }) {
     return (
       <div
         key={row.row_key}
         className={
-          row.fields.length === 3
+          row.items.length === 3
             ? "grid gap-3 md:grid-cols-3"
-            : row.fields.length === 2
+            : row.items.length === 2
               ? "grid gap-3 md:grid-cols-2"
               : "space-y-3"
         }
       >
-        {row.fields.map((field) =>
+        {row.items.map(({ field }) =>
           field.canEdit ? renderEditableField(field) : renderFieldContent(field)
         )}
       </div>

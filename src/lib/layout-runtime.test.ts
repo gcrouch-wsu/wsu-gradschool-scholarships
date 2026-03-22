@@ -94,9 +94,14 @@ describe("layout runtime helpers", () => {
       "gpa",
       "credits",
     ]);
+    expect(bound.sections[0]?.rows[0]?.items.map((item) => item.width)).toEqual([
+      "half",
+      "half",
+    ]);
     expect(bound.sections[0]?.rows[1]?.fields.map((field) => field.fieldKey)).toEqual([
       "major",
     ]);
+    expect(bound.sections[0]?.rows[1]?.items.map((item) => item.width)).toEqual(["full"]);
   });
 
   it("preserves three-column rows at runtime", () => {
@@ -137,6 +142,11 @@ describe("layout runtime helpers", () => {
       "email",
       "student_id",
       "term",
+    ]);
+    expect(bound.sections[0]?.rows[0]?.items.map((item) => item.width)).toEqual([
+      "third",
+      "third",
+      "third",
     ]);
   });
 });
