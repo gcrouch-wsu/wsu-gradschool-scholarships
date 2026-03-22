@@ -93,7 +93,7 @@ export async function updateRowCells(
   token: string,
   sheetId: number,
   rowId: number,
-  cells: Array<{ columnId: number; value: unknown }>,
+  cells: Array<{ columnId: number; value: unknown; strict?: boolean }>,
   timeoutMs?: number
 ): Promise<{ ok: boolean; error?: string; httpStatus?: number; errorCode?: number }> {
   const ms = timeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
@@ -101,6 +101,7 @@ export async function updateRowCells(
   const safeCells = cells.map((c) => ({
     columnId: c.columnId,
     value: c.value === null ? "" : c.value,
+    ...(typeof c.strict === "boolean" ? { strict: c.strict } : {}),
   }));
   try {
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows`, {
@@ -118,6 +119,45 @@ export async function updateRowCells(
       return { ok: false, error: parsed.message, httpStatus: parsed.httpStatus, errorCode: parsed.errorCode };
     }
     return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function addRow(
+  token: string,
+  sheetId: number,
+  cells: Array<{ columnId: number; value: unknown; strict?: boolean }>,
+  timeoutMs?: number
+): Promise<{ ok: boolean; rowId?: number; error?: string; httpStatus?: number; errorCode?: number }> {
+  const ms = timeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
+  // Coerce null → "" — Smartsheet rejects explicit JSON null on any cell value
+  const safeCells = cells.map((c) => ({
+    columnId: c.columnId,
+    value: c.value === null ? "" : c.value,
+    ...(typeof c.strict === "boolean" ? { strict: c.strict } : {}),
+  }));
+  try {
+    const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ cells: safeCells }]),
+      signal: AbortSignal.timeout(ms),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      const parsed = parseSmartsheetError(body, res.status);
+      return { ok: false, error: parsed.message, httpStatus: parsed.httpStatus, errorCode: parsed.errorCode };
+    }
+    const data = JSON.parse(body) as {
+      result?: Array<{ id: number }>;
+    };
+    const rowId = data.result?.[0]?.id;
+    return { ok: true, rowId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };

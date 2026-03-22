@@ -53,7 +53,7 @@ export function ReviewerScoreForm({
   const [loading, setLoading] = useState(true);
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [nomineeIds, setNomineeIds] = useState<number[]>([]);
-  const [attachments, setAttachments] = useState<{ id: number; name: string; url?: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ id: string; name: string; url?: string; source?: string }[]>([]);
   const [viewType, setViewType] = useState<string>("tabbed");
   const [viewSections, setViewSections] = useState<ViewSection[]>([]);
   const [activeTab, setActiveTab] = useState<string>("main");
@@ -106,7 +106,7 @@ export function ReviewerScoreForm({
       setEdits(initial);
       setLoadedAt(rowData.loadedAt ?? null);
       setNomineeIds((rowsData.rows ?? []).map((r: { id: number }) => r.id));
-      setAttachments(attachmentsData.attachments ?? []);
+      setAttachments((attachmentsData.attachments ?? []).map(a => ({ ...a, id: String(a.id) })));
     } catch {
       setError("Failed to load");
     } finally {

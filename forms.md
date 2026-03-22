@@ -1,577 +1,811 @@
-# Intake Form Tool — Build Spec
+# Intake Form Tool Build Specification
 
-## Purpose
+Final build specification for the intake-form feature in `scholarship-review-platform`.
 
-Replace Gravity Forms / WordPress as the nomination intake mechanism for graduate scholarship programs. Program coordinators (staff, not students) submit one form per nominated student. Each submission creates a row in an existing Smartsheet. The reviewer workflow (already built) picks up from there — reviewers log in, score nominees, and write scores back to Smartsheet.
+This document is intended to be build-ready. It makes final decisions for v1 so the implementation can proceed without unresolved product or architecture blockers.
 
-This is a self-contained addition to the existing platform. No changes are required to the reviewer workflow, scoring, or Smartsheet writeback.
-
----
-
-## Corrected Mental Model
-
-```
-Admin creates Smartsheet → enters Sheet ID → syncs columns
-           ↓
-Admin builds intake form (maps form fields → Smartsheet columns)
-           ↓
-Admin publishes form → shareable URL generated
-           ↓
-Program coordinator fills out form once per nominated student
-   (no login required; optionally gated to @wsu.edu email domain)
-           ↓
-Submission → new row created in Smartsheet
-   - Text/select/checkbox fields → cell values
-   - File uploads → Vercel Blob → URL attachments on the row
-           ↓
-Admin assigns reviewers to cycle (already built)
-           ↓
-Reviewers log in, rate nominees (already built)
-           ↓
-Scores write back to Smartsheet (already built)
-```
-
-**Who submits:** Program staff / coordinators. Not students. Not reviewers. No account needed.
-
-**Who manages the form:** Admins (platform admin or scholarship admin for the program).
-
-**Where the data lives:** Smartsheet is the system of record. The app stores only the form schema and a lightweight submission audit log. No nominee PII is stored in the app database.
+For broader platform context, see `PROJECT_SPEC.md`.
 
 ---
 
-## Architecture Overview
+## 1. Objective
 
-### Existing infrastructure reused
+Replace Gravity Forms / WordPress as the nomination intake mechanism for graduate scholarship programs.
 
-| Existing piece | How it's reused |
+Staff coordinators submit one nomination form per student. Each successful submission creates a new row in the cycle's Smartsheet. The existing reviewer workflow continues to use the Smartsheet row as the canonical nominee record.
+
+Smartsheet remains the source of truth for structured nominee data. Postgres stores intake configuration, publication/version state, submission lifecycle metadata, file metadata, and abuse-control records.
+
+---
+
+## 2. Final Decisions For V1
+
+These decisions are locked for the initial build.
+
+| Area | Final decision |
 |---|---|
-| `connections` table + Smartsheet proxy | Same connection/token used to write rows |
-| `sheet_schema_snapshot_json` on cycle | Column list reused to populate the field → column mapping picker |
-| Sync Columns from Smartsheet | Must be done before building intake form (same prerequisite as review builder) |
-| `scholarship_cycles` | Intake form is linked to a cycle (one form per cycle) |
-| Audit logging | Submission events logged to `audit_logs` |
+| Build command | `npm run build`, which currently runs `next build` |
+| Bundler | Default Next.js 16 production bundler for this repo, which is Turbopack |
+| Runtime for intake routes | Explicit `export const runtime = "nodejs"` on all intake admin/public routes |
+| Auth model | Public unauthenticated form with abuse controls, not identity-proof authentication |
+| Staff restriction | Required `@wsu.edu` email suffix validation in v1 |
+| SSO / email verification | Not part of v1 |
+| Published form model | Immutable published snapshot only; drafts are never served publicly |
+| Schema drift policy | Block submit and auto-unpublish the intake form if live schema validation fails |
+| Duplicate submissions | Allowed; no automatic duplicate blocking in v1 |
+| Edit after submit | Not supported; admin deletes the row and the coordinator resubmits |
+| Field types exposed in builder | `short_text`, `long_text`, `email`, `number`, `select`, `checkbox`, `date`, `file` |
+| Smartsheet column types allowed for v1 intake mapping | `TEXT_NUMBER`, `PICKLIST`, `DATE`, `CHECKBOX` |
+| CONTACT_LIST / MULTI_CONTACT_LIST mapping | Out of scope for v1; builder must not allow mapping public intake fields to those column types |
+| File storage | Private Vercel Blob |
+| File access in reviewer/admin UI | App-generated signed Blob URLs via attachment APIs |
+| Smartsheet LINK attachments | Not used in v1 |
+| Reviewer attachment integration | Reviewer/admin attachment APIs will merge Smartsheet attachments plus intake-upload files keyed by `row_id` |
+| Large-file handling | Direct browser upload only; the submit route is metadata-only |
+| Idempotency | Required; every submission uses a stable `submission_id` |
+| Rate limiting | DB-backed, IP-hash based |
+| PII retention | Minimal operational storage only; no full payloads in audit logs |
 
-### New dependencies
-
-| Dependency | Purpose | Notes |
-|---|---|---|
-| `@vercel/blob` | Client-side file upload bypassing 4.5 MB Vercel function body limit | Already available in Vercel project under Storage |
-| Resend (or SendGrid) | Optional confirmation email to submitter | New env var `RESEND_API_KEY`; feature can be skipped initially |
-
-### New env vars
-
-```
-BLOB_READ_WRITE_TOKEN   # Vercel Blob token — from Vercel Storage dashboard
-RESEND_API_KEY          # Optional — for confirmation emails
-```
-
----
-
-## Data Model
-
-### New tables (Migration 005)
-
-#### `intake_forms`
-
-One row per cycle. Stores form settings and publish state.
-
-```sql
-CREATE TABLE IF NOT EXISTS intake_forms (
-  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  cycle_id                  UUID NOT NULL REFERENCES scholarship_cycles(id) ON DELETE CASCADE,
-  title                     VARCHAR(255) NOT NULL,
-  description               TEXT,                          -- Instructions shown above the form
-  is_published              BOOLEAN NOT NULL DEFAULT false,
-  allow_submissions_from    TIMESTAMPTZ,                   -- NULL = open immediately on publish
-  allow_submissions_until   TIMESTAMPTZ,                   -- NULL = no deadline
-  require_wsu_email         BOOLEAN NOT NULL DEFAULT true, -- Gate to configured email domain
-  submitter_email_column_id BIGINT,                        -- Optional: write submitter email to this Smartsheet column
-  send_confirmation_email   BOOLEAN NOT NULL DEFAULT false,
-  confirmation_message      TEXT,                          -- Shown on confirmation page
-  created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(cycle_id)                                         -- One form per cycle
-);
-
-CREATE INDEX idx_intake_forms_cycle ON intake_forms(cycle_id);
-```
-
-#### `intake_form_fields`
-
-One row per field in the form. Ordered by `sort_order`.
-
-```sql
-CREATE TABLE IF NOT EXISTS intake_form_fields (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  form_id              UUID NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
-  field_key            VARCHAR(100) NOT NULL,     -- Slug, auto-generated from label, used internally
-  field_type           VARCHAR(50) NOT NULL
-                         CHECK (field_type IN (
-                           'short_text', 'long_text', 'email', 'number',
-                           'dropdown', 'checkbox_group',
-                           'file_upload',
-                           'section_heading', 'description_text'
-                         )),
-  label                VARCHAR(255) NOT NULL,
-  description          TEXT,                      -- Helper text rendered below the input
-  required             BOOLEAN NOT NULL DEFAULT false,
-  sort_order           INT NOT NULL DEFAULT 0,
-  target_column_id     BIGINT,                    -- Smartsheet column ID to write value to
-                                                  -- NULL for section_heading / description_text
-  target_column_title  VARCHAR(255),              -- Denormalized for display in builder
-  settings_json        JSONB NOT NULL DEFAULT '{}',
-  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(form_id, field_key)
-);
-
-CREATE INDEX idx_intake_form_fields_form ON intake_form_fields(form_id);
-```
-
-**`settings_json` schema by field type:**
-
-| `field_type` | `settings_json` keys |
-|---|---|
-| `short_text` | `{ "maxLength": number \| null }` |
-| `long_text` | `{ "maxWords": number \| null, "rows": number }` (rows default 6) |
-| `email` | `{}` |
-| `number` | `{ "min": number \| null, "max": number \| null, "step": number \| null }` |
-| `dropdown` | `{ "options": string[] }` — static list; or `{ "useColumnOptions": true }` to pull PICKLIST options from Smartsheet column |
-| `checkbox_group` | `{ "options": string[], "minChecked": number \| null }` — stored to Smartsheet as comma-separated string |
-| `file_upload` | `{ "maxSizeMb": number, "acceptedTypes": string[] }` — e.g. `["application/pdf"]` |
-| `section_heading` | `{}` — display only, no column mapping |
-| `description_text` | `{ "content": string }` — display only, markdown supported |
-
-#### `intake_submissions`
-
-Audit record only. Nominee data is in Smartsheet, not here.
-
-```sql
-CREATE TABLE IF NOT EXISTS intake_submissions (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  form_id           UUID NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
-  cycle_id          UUID NOT NULL REFERENCES scholarship_cycles(id) ON DELETE CASCADE,
-  smartsheet_row_id BIGINT,            -- Row ID returned by Smartsheet addRow (null if failed before row created)
-  submitter_email   VARCHAR(255),      -- Email entered on form (may be null if not required)
-  status            VARCHAR(20) NOT NULL DEFAULT 'submitted'
-                      CHECK (status IN ('submitted', 'failed')),
-  error_detail      TEXT,              -- Populated if status = 'failed'
-  submitted_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_intake_submissions_form ON intake_submissions(form_id);
-CREATE INDEX idx_intake_submissions_cycle ON intake_submissions(cycle_id);
-CREATE INDEX idx_intake_submissions_submitted ON intake_submissions(submitted_at);
-```
-
-### No draft table
-
-Program coordinators fill out the form in one sitting. Draft-and-return is not in scope for this phase.
+These decisions supersede earlier working drafts.
 
 ---
 
-## Field Types — Full Spec
+## 3. Build Contract For This Repo
 
-### `short_text`
-Single-line text input (`<input type="text">`). Optional character limit (`maxLength`). Maps to a Smartsheet TEXT_NUMBER column. Example uses: Student first name, last name, Student ID, Department name.
+- Vercel runs `npm run build`.
+- `package.json` currently defines `npm run build` as `next build`.
+- On Next.js 16, plain `next build` uses Turbopack by default. That is the current build contract for this repo.
+- `--webpack` is not part of the build spec here and must not be added unless a reproduced production-build regression justifies it.
+- All new intake routes must explicitly export `runtime = "nodejs"` even though App Router route handlers default to Node.js. The explicit export is a guardrail because these routes will use Postgres, crypto, and upload-token logic.
 
-### `long_text`
-Multi-line textarea. Optional word count limit enforced client-side (live counter) and server-side (reject if over). Default 6 rows, configurable. Maps to a Smartsheet TEXT_NUMBER column. Example uses: Research proposal, dissertation prospectus, schedule of milestones. **This is the primary replacement for file uploads of typed documents.**
+Local verification before pushing:
 
-### `email`
-Single-line email input (`<input type="email">`). Domain validation applied if `require_wsu_email` is on. Maps to TEXT_NUMBER column.
-
-### `number`
-Numeric input with optional min/max/step. Maps to TEXT_NUMBER column (Smartsheet stores all user data as text internally anyway).
-
-### `dropdown`
-Single select (`<select>`). Options either hardcoded in `settings_json.options` or pulled from a Smartsheet PICKLIST column's options at form-load time (`useColumnOptions: true`). Stored as the selected string value. Maps to TEXT_NUMBER or PICKLIST column.
-
-### `checkbox_group`
-Set of checkboxes. Multiple can be checked. Stored as a comma-separated string (e.g. `"Proposal approved, Advanced to candidacy"`). Maps to TEXT_NUMBER column. Example use: Eligibility checklist.
-
-### `file_upload`
-File picker (`<input type="file">`). Upload goes client → Vercel Blob directly (bypasses Vercel function body limit). Resulting blob URL is sent to the submission API, then attached to the Smartsheet row as a URL attachment. Does **not** map to a Smartsheet column — stored as a row attachment. Configurable `maxSizeMb` (default 25, max 500) and `acceptedTypes` (default `["application/pdf"]`).
-
-### `section_heading`
-Visual divider with a label. Renders as an `<h2>` or `<h3>`. No data collected. No column mapping.
-
-### `description_text`
-Free text / instructions block. Renders as formatted text above the next field. No data collected. Supports basic markdown (bold, italic, lists, links).
+- `npm run build`
+- `npx tsc --noEmit`
+- `npm test` for any route, auth, Smartsheet-write, or file-attachment change
 
 ---
 
-## Smartsheet Integration — New Functions
+## 4. Scope
 
-Add to `src/lib/smartsheet.ts`:
+### 4.1 In scope for v1
 
-### `addRow(connectionId, sheetId, cells)`
+- Intake-form admin builder
+- Draft and published intake-form versions
+- Public read-only schema route
+- Public metadata-only submit route
+- Private Blob uploads via short-lived upload tokens
+- Smartsheet row creation for structured form fields
+- DB tracking of submission lifecycle
+- Reviewer/admin viewing of intake-upload files alongside Smartsheet attachments
+- Public abuse controls and audit logging
 
-Creates a new row in a sheet.
+### 4.2 Out of scope for v1
 
-```
-POST https://api.smartsheet.com/2.0/sheets/{sheetId}/rows
-Authorization: Bearer {decryptedToken}
-Content-Type: application/json
+- SSO
+- mailbox verification
+- editing a submission after success
+- automatic duplicate blocking
+- public mapping to CONTACT_LIST or MULTI_CONTACT_LIST columns
+- Smartsheet LINK attachment mirroring
+- rich-text instructions editor
 
-{
-  "cells": [
-    { "columnId": 1234567890, "value": "Smith" },
-    { "columnId": 1234567891, "value": "John" },
-    { "columnId": 1234567892, "value": "Graduate School" }
-  ]
-}
-```
-
-Returns the created row's numeric ID (`result[0].id`). This row ID is stored in `intake_submissions.smartsheet_row_id` and is used to attach files.
-
-**Error handling:** Same pattern as existing `updateRowCells` — parse `{ httpStatus, errorCode, message }`, pass 429 rate-limit through, throw structured error otherwise.
-
-### `attachUrlToRow(connectionId, sheetId, rowId, name, url)`
-
-Attaches a URL (Vercel Blob URL) to an existing row. Reviewers see these as clickable links in the Smartsheet Attachments panel and in the existing review platform's attachment section.
-
-```
-POST https://api.smartsheet.com/2.0/sheets/{sheetId}/rows/{rowId}/attachments
-Authorization: Bearer {decryptedToken}
-Content-Type: application/json
-
-{
-  "name": "curriculum_vita.pdf",
-  "description": "Uploaded via WSU Graduate School Scholarship Review",
-  "attachmentType": "LINK",
-  "url": "https://abc123.public.blob.vercel-storage.com/..."
-}
-```
-
-Call once per uploaded file after `addRow` succeeds. If an attachment call fails, log the error but do not roll back the row — the submission is still valid. Log the failure to `intake_submissions.error_detail`.
+Out-of-scope items must not be partially implemented.
 
 ---
 
-## API Routes
+## 5. Architecture
 
-### Admin routes (authenticated, require cycle manage permission)
+### 5.1 Source of truth
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/admin/cycles/[cycleId]/intake-form` | Get form schema + fields for builder |
-| `POST` | `/api/admin/cycles/[cycleId]/intake-form` | Create form for cycle (idempotent — returns existing if already created) |
-| `PATCH` | `/api/admin/cycles/[cycleId]/intake-form` | Update form settings (title, description, dates, email gate, confirmation message) |
-| `PUT` | `/api/admin/cycles/[cycleId]/intake-form/fields` | Replace all fields (bulk save, same pattern as FieldMappingBuilder save) |
-| `POST` | `/api/admin/cycles/[cycleId]/intake-form/publish` | Set `is_published = true` |
-| `POST` | `/api/admin/cycles/[cycleId]/intake-form/unpublish` | Set `is_published = false` |
-| `GET` | `/api/admin/cycles/[cycleId]/intake-form/submissions` | List submission audit records (submitter email, timestamp, status, Smartsheet row ID) |
+- Smartsheet is the source of truth for nominee row fields.
+- Postgres is the source of truth for intake-form configuration, publication/version state, submission status, file metadata, and rate-limit data.
+- Blob is the binary object store for uploaded files.
 
-### Public submission routes (no auth)
+### 5.2 Public serving model
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/submit/[cycleId]` | Return published form schema. 404 if not published or outside window. |
-| `POST` | `/api/submit/[cycleId]` | Accept submission: validate → `addRow` → `attachUrlToRow` × N → write audit record. |
+- Public routes never read draft intake-form rows directly.
+- Public routes only serve the currently published intake-form version for the cycle.
+- Admin edits affect only draft state until publish.
 
-**Public route security:**
-- Form must be published (`is_published = true`)
-- Submission must be within `allow_submissions_from` / `allow_submissions_until` window if set
-- If `require_wsu_email = true`, validate submitter email domain against `ALLOWED_REVIEWER_EMAIL_DOMAIN` (same env var already used for reviewer assignments)
-- Server-side validation of all required fields before writing to Smartsheet
-- Rate limiting: 20 submissions per IP per hour per cycle (simple in-memory counter using Next.js middleware, or header-based via Vercel)
-- No auth token or session required
+### 5.3 Live validation model
 
-### File upload route
+The public submit route must validate the live Smartsheet schema at submit time before creating a row.
 
-Vercel Blob supports client-side uploads directly from the browser using a server-issued token. The browser calls the Blob API directly — the file never passes through a Vercel function.
+Validation must confirm:
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/submit/[cycleId]/upload-token` | Issues a Vercel Blob client upload token. Validates cycle is published and within window. Returns token for client to use with `@vercel/blob`'s `upload()`. |
+- every mapped target column still exists
+- every mapped target column type still matches the published schema
+- every mapped target column is supported by v1
+- every mapped target column is writable
+- every picklist value is valid under the chosen strictness rules
 
-The client receives the token, uploads the file directly to Vercel Blob, then passes the returned URL in the main form POST body under `_attachments: [{ fieldKey, blobUrl, fileName, sizeBytes }]`.
+If live validation fails:
+
+- the submission is rejected
+- no row is created
+- the form is auto-unpublished
+- an audit entry is written
+- admin UI shows the form as invalid until republished
 
 ---
 
-## Pages
+## 6. Data Model
 
-### Admin: Intake Form Builder
+Migration 005 will add the following tables.
 
-**Route:** `/admin/scholarships/[id]/cycles/[cycleId]/intake-form`
+### 6.1 `intake_forms`
 
-A dedicated sub-page for the form builder (same pattern as `/builder` for the reviewer field mapper). Accessible via a "Build intake form" link on the cycle detail page.
+One row per cycle.
 
-**Sections:**
+Required columns:
 
-1. **Form settings** — title, description/instructions, open date, close date, email domain gate toggle, confirmation message, send confirmation email toggle
+- `id`
+- `cycle_id` unique
+- `title`
+- `instructions_text`
+- `status` (`draft`, `published`, `unpublished`, `invalid`)
+- `opens_at`
+- `closes_at`
+- `published_version_id`
+- `created_at`
+- `updated_at`
 
-2. **Fields** — drag-to-reorder list of fields. Add field button opens a picker for field type. Each field card shows:
-   - Field type badge
-   - Label (editable inline)
-   - Helper text (editable inline, optional)
-   - Required toggle
-   - Column mapping picker (dropdown of columns from `sheet_schema_snapshot_json` — same source as review builder)
-   - Type-specific settings (word limit for long_text, options for dropdown/checkbox, max size for file_upload)
-   - Delete button
+Rules:
 
-3. **Preview** — live preview of the form as it will appear to submitters, updated as fields are edited
+- `instructions_text` is plain text in v1
+- there is at most one active intake-form container per cycle
 
-4. **Save / Publish controls** — Save (drafts the form), Publish (makes it live, generates URL), Unpublish button (if published), copy-to-clipboard for the public URL
+### 6.2 `intake_form_fields`
 
-**Column mapping constraint:** Fields of type `section_heading` and `description_text` have no column picker. `file_upload` fields have no column picker (they become row attachments). All other field types require a column mapping before the form can be published.
+Draft builder rows only.
 
-**Publish validation:** Before publishing, check:
-- At least one data field exists (not just headings)
-- All required-to-map fields have a `target_column_id`
-- Cycle has a connected Smartsheet with synced schema (same check as review builder)
+Required columns:
 
-### Public: Submission Page
+- `id`
+- `intake_form_id`
+- `field_key`
+- `label`
+- `help_text`
+- `field_type`
+- `required`
+- `sort_order`
+- `target_column_id`
+- `target_column_title`
+- `target_column_type`
+- `settings_json`
+- `created_at`
+- `updated_at`
 
-**Route:** `/submit/[cycleId]`
+Rules:
 
-No auth. No app header/footer — standalone branded page.
+- `field_key` is unique within the intake form
+- `field_type` must be one of the v1-allowed field types
+- `target_column_type` must be one of the v1-allowed Smartsheet column types
 
-**Layout:**
-- WSU logo + scholarship name as header
-- Cycle label as subtitle
-- Form description/instructions block (if set)
-- Fields rendered in `sort_order`
-- Section headings render as visual dividers
-- Live word count on `long_text` fields with a limit
-- File picker with drag-and-drop zone for `file_upload` fields; file name + size shown after selection; upload to Blob happens on file select (not on submit) so the user sees upload progress before hitting Submit
-- Required field indicator (asterisk)
-- Submit button
-- Error summary block at top on failed validation
+### 6.3 `intake_form_versions`
 
-**States:**
-- **Not published / outside window:** Static page with message "This form is not currently accepting submissions."
-- **Loading:** Skeleton while form schema is fetched client-side
-- **Filling out:** Normal form state
-- **Uploading files:** Progress indicator per file during Blob upload
-- **Submitting:** Button disabled, "Submitting…" text
-- **Error:** Error summary block with field-level messages
-- **Success:** Redirect to `/submit/[cycleId]/confirmation`
+Immutable published and superseded snapshots.
 
-### Public: Confirmation Page
+Required columns:
 
-**Route:** `/submit/[cycleId]/confirmation`
+- `id`
+- `intake_form_id`
+- `version_number`
+- `status` (`draft`, `published`, `superseded`)
+- `snapshot_json`
+- `created_by_user_id`
+- `created_at`
+- `published_at`
 
-Static branded page. Shows:
-- "Nomination submitted successfully"
-- Confirmation message set by admin (if any)
-- Timestamp
-- "Submit another nomination" link (back to form)
+Rules:
 
----
+- `snapshot_json` contains the complete public form contract
+- public routes read from `snapshot_json`, not from draft rows
 
-## Submission Flow — Step by Step
+### 6.4 `intake_submissions`
 
-```
-1. Browser loads /submit/[cycleId]
-      → GET /api/submit/[cycleId]
-      → Server: checks published + window → returns form schema
+Tracks the lifecycle of one public submission.
 
-2. User fills out form
+Required columns:
 
-3. User selects a file (file_upload field)
-      → POST /api/submit/[cycleId]/upload-token (gets Blob token)
-      → Browser: uploads file directly to Vercel Blob
-      → Blob returns { url, pathname, size }
-      → UI shows "✓ curriculum_vita.pdf (342 KB)"
+- `id`
+- `submission_id` unique
+- `cycle_id`
+- `intake_form_id`
+- `intake_form_version_id`
+- `submitter_email`
+- `status`
+- `smartsheet_row_id`
+- `request_cells_json`
+- `request_files_json`
+- `failure_json`
+- `ip_hash`
+- `created_at`
+- `updated_at`
+- `completed_at`
 
-4. User clicks Submit
-      → Client validates: required fields present, word counts within limit, all files uploaded
+Allowed statuses:
 
-5. POST /api/submit/[cycleId]
-   Body: {
-     submitterEmail: "gcrouch@wsu.edu",
-     fields: {
-       "student_first": "Jane",
-       "student_last": "Smith",
-       "student_id": "12345678",
-       "department": "Political Science",
-       "research_proposal": "This research examines...",
-       "eligibility": "Proposal approved, Advanced to candidacy"
-     },
-     attachments: [
-       { fieldKey: "cv_upload", blobUrl: "https://...", fileName: "cv.pdf", sizeBytes: 350000 },
-       { fieldKey: "transcript", blobUrl: "https://...", fileName: "transcript.pdf", sizeBytes: 180000 }
-     ]
-   }
+- `pending`
+- `processing`
+- `row_created`
+- `completed`
+- `failed`
+- `rate_limited`
+- `invalid_schema`
 
-6. Server validates:
-      - Form published + within window
-      - WSU email domain (if required)
-      - All required fields present
-      - Word counts within limits
-      - Field values match expected types
-      → 400 with field-level errors if invalid
+Rules:
 
-7. Server: addRow(connectionId, sheetId, cells)
-      → cells built by iterating fields, mapping fieldKey → target_column_id → value
-      → if submitter_email_column_id is set, include that cell too
-      → Smartsheet returns new rowId
+- `request_cells_json` and `request_files_json` exist for idempotent recovery and replay
+- these request snapshots are operational metadata, not canonical source-of-truth data
+- retention policy:
+  - completed request snapshots kept 30 days, then nulled
+  - failed request snapshots kept 90 days
 
-8. Server: for each attachment in order
-      attachUrlToRow(connectionId, sheetId, rowId, fileName, blobUrl)
-      → failures logged but do not abort
+### 6.5 `intake_submission_files`
 
-9. Server: INSERT INTO intake_submissions (form_id, cycle_id, smartsheet_row_id, submitter_email, status)
+Stores file metadata keyed to the submission and Smartsheet row.
 
-10. Server: logAudit({ action_type: 'intake_submission', cycle_id, metadata: { rowId, submitterEmail } })
+Required columns:
 
-11. Server: if send_confirmation_email = true → send via Resend (non-blocking, best-effort)
+- `id`
+- `submission_id` FK to `intake_submissions.submission_id`
+- `cycle_id`
+- `field_key`
+- `blob_url`
+- `blob_pathname`
+- `original_filename`
+- `content_type`
+- `size_bytes`
+- `smartsheet_row_id`
+- `created_at`
 
-12. Server: return { success: true }
+Rules:
 
-13. Browser: redirect to /submit/[cycleId]/confirmation
-```
+- files are stored only after the submission reaches at least `row_created`
+- reviewer/admin attachment APIs read from this table by `cycle_id` and `smartsheet_row_id`
 
----
+### 6.6 `intake_rate_limit_events`
 
-## Admin Cycle Page Changes
+DB-backed rate limiting for public routes.
 
-### New section on cycle detail page
+Required columns:
 
-Below "Smartsheet connection", above "Fields & layout (what reviewers see)":
+- `id`
+- `cycle_id`
+- `route_key`
+- `ip_hash`
+- `created_at`
 
-```
-Nomination intake form
-──────────────────────
-[Build intake form →]   [Preview form]   Status: Draft / Published (since Jan 15, 2026)
+Rules:
 
-If published:
-Public URL: https://yourapp.vercel.app/submit/{cycleId}  [Copy]
-Submissions: 12 received
-```
-
-### Setup checklist — updated
-
-```
-1. ✓ Connect a Smartsheet
-2. ✓ Import schema (sync columns)
-3. ○ Build intake form (optional — skip if using external intake)
-4. ○ Configure fields & layout (what reviewers see)
-5. ○ Publish configuration
-6. ○ Assign reviewers
-7. ○ Activate cycle
-```
-
-Step 3 is marked optional. Cycles using Gravity Forms or manual Smartsheet entry can skip it.
+- `ip_hash` is HMAC-SHA256 of the client IP using `ENCRYPTION_KEY`
+- raw IP addresses are never stored
+- retention policy: 14 days
 
 ---
 
-## Reviewer Experience — No Changes Required
+## 7. Admin Builder Specification
 
-Once a row exists in Smartsheet (however it got there — intake form, Gravity Forms, manual entry, CSV import), it appears as a nominee in the existing review interface.
+### 7.1 UI pattern
 
-Long-text field values from the intake form (proposal, prospectus, etc.) appear as `metadata` display fields — readable inline without opening attachments.
+The builder must reuse existing admin patterns where practical:
 
-File attachments (CV, transcript, letters) appear in the existing "Attachments" section of the reviewer scoring form. Reviewers click to open the PDF from Vercel Blob.
+- accordion-card layout
+- drag-to-reorder interactions
+- explicit target-column display including column type
+- inline validation errors
 
----
+### 7.2 Builder capabilities
 
-## Gravity Forms Field-to-Type Mapping
+Admins can:
 
-Based on the example forms:
+- set title
+- set plain-text instructions
+- set open/close timestamps
+- add, remove, and reorder fields
+- map each field to a Smartsheet column
+- publish
+- unpublish
 
-| Gravity Forms field | Intake form field type | Notes |
-|---|---|---|
-| Student Name (First/Last) | `short_text` × 2 | Separate fields or can combine into one |
-| Email | `email` | |
-| Student ID | `short_text` | maxLength: 9 |
-| Department | `short_text` | |
-| Department Contact / Chair | `short_text` | |
-| Chair Email | `email` | |
-| Eligibility checkboxes | `checkbox_group` | options match eligibility items |
-| Letters of Recommendation | `file_upload` | Keep as file — third-party document |
-| CV / Curriculum Vita | `file_upload` | Keep as file — formatted document |
-| Unofficial Transcript | `file_upload` | Keep as file — official document |
-| Letter of Support / Advisor | `file_upload` | Keep as file — third-party letter |
-| Research/Scholarship Proposal | `long_text` | Convert from file to text |
-| Dissertation Prospectus (1000 words) | `long_text` | maxWords: 1000 |
-| 9-month schedule / benchmarks | `long_text` | Convert from file to text |
+### 7.3 Builder validation rules
 
----
+The builder must reject:
 
-## Security Model
+- unsupported field types
+- unsupported target Smartsheet column types
+- duplicate field keys
+- duplicate target-column mappings when the same target column would receive conflicting values
+- missing labels
+- missing target columns
+- file fields mapped to non-file metadata handling rules
 
-| Concern | Mitigation |
-|---|---|
-| PII in submissions | Data written to Smartsheet (existing institutional system of record). App DB stores only submitter email + Smartsheet row ID. |
-| Unauthorized form submissions | WSU email domain gate (default on). Rate limiting: 20 submissions/IP/hour. |
-| File access control | Vercel Blob URLs are unguessable (UUID path). URLs are stored as Smartsheet row attachments, accessible to anyone with the Smartsheet link or via the review platform (same access control as other nominee data). |
-| Token exposure | Smartsheet API token remains server-side only, same as existing proxy pattern. Public routes never see or return the token. |
-| Admin-only form management | All `/api/admin/cycles/[cycleId]/intake-form/*` routes require `canManageCycle` permission check — same auth as existing cycle routes. |
-| Spam / abuse | Rate limiting + WSU email domain gate is sufficient for internal academic use. CAPTCHA not needed unless the form URL becomes truly public. |
+### 7.4 File fields
 
----
+In v1, a `file` field represents an app-managed Blob upload associated with the resulting Smartsheet row.
 
-## Email Confirmation (Optional)
+It does not map to a Smartsheet attachment column because Smartsheet does not have one. File fields therefore:
 
-If `send_confirmation_email = true` on the form:
-
-```
-To: submitter email
-Subject: Nomination received — {scholarship name} ({cycle label})
-Body:
-  Thank you for submitting a nomination for {scholarship name}.
-
-  Nominee: {student first} {student last}
-  Submitted: {timestamp}
-
-  {confirmation_message from admin, if set}
-
-  This is an automated message from the WSU Graduate School Scholarship Review platform.
-```
-
-Implementation: `src/lib/email.ts` — thin wrapper over Resend's `POST /emails` API. Called after successful Smartsheet write, non-blocking (fire-and-forget with error logging). Enabled only if `RESEND_API_KEY` is set in env.
+- store `field_key` in the published form snapshot
+- store file metadata in `intake_submission_files`
+- appear in reviewer/admin attachment lists after submission
 
 ---
 
-## Implementation Order
+## 8. Public API Specification
 
-### Phase 1 — Text fields only, no file uploads
+All intake routes must export `runtime = "nodejs"`.
 
-Get nominations flowing into Smartsheet without files. Proves the end-to-end loop.
+### 8.1 `GET /api/submit/[cycleId]`
 
-1. Migration 005 (`intake_forms`, `intake_form_fields`, `intake_submissions`)
-2. `addRow()` in `src/lib/smartsheet.ts`
-3. Admin API routes (CRUD form + fields, publish/unpublish)
-4. Intake form builder UI (`/admin/.../intake-form`)
-   - Form settings panel
-   - Field list with drag-to-reorder
-   - Column mapping picker
-   - Save + Publish controls
-5. Public submission page (`/submit/[cycleId]`)
-   - Renders short_text, long_text, email, number, dropdown, checkbox_group, section_heading, description_text
-   - Validation + error display
-   - Submit → `addRow`
-   - Confirmation page
-6. Cycle detail page — add intake form section + update setup checklist
+Purpose:
 
-### Phase 2 — File uploads
+- return the currently published form definition and availability status
 
-7. Add `@vercel/blob` dependency
-8. Upload token route (`/api/submit/[cycleId]/upload-token`)
-9. `attachUrlToRow()` in `src/lib/smartsheet.ts`
-10. `file_upload` field type in form builder (max size, accepted types config)
-11. File picker UI on public form (drag-drop, upload-on-select, progress)
-12. Submission API updated to handle `attachments` array
+Response behavior:
 
-### Phase 3 — Polish
+- `404` if no intake form is published
+- `200` with `status: "open" | "scheduled" | "closed"` if a published form exists
 
-13. Confirmation email via Resend (if `RESEND_API_KEY` is set)
-14. Submission log in admin UI (list of submissions per cycle with status)
-15. Form preview in admin builder
-16. Open/close date enforcement + UI indicators on public form
+Response payload includes:
+
+- `cycleId`
+- `formVersionId`
+- `title`
+- `instructionsText`
+- `opensAt`
+- `closesAt`
+- `status`
+- ordered public `fields`
+- public file limits
+
+### 8.2 `POST /api/submit/[cycleId]/upload-token`
+
+Purpose:
+
+- authorize direct browser upload to private Blob
+
+Request body:
+
+- `submissionId`
+- `fieldKey`
+- `filename`
+- `contentType`
+- `sizeBytes`
+
+Validation:
+
+- form is published
+- public status is `open`
+- `submissionId` is present
+- `fieldKey` exists in the published version and is a `file` field
+- `contentType` is `application/pdf`
+- `sizeBytes <= 104857600` (100 MB)
+
+Rate limit:
+
+- max 10 upload-token requests per IP per 15 minutes per cycle
+
+Response:
+
+- short-lived upload token
+- canonical upload pathname prefix
+
+### 8.3 `POST /api/submit/[cycleId]`
+
+Purpose:
+
+- validate the submission
+- create the Smartsheet row
+- persist submission/file metadata
+
+Request body:
+
+- `submissionId`
+- `formVersionId`
+- `submitterEmail`
+- `fields`
+- `files`
+
+Rules:
+
+- request is metadata-only
+- raw file bytes are never accepted
+- `submitterEmail` must end with `@wsu.edu`
+- `formVersionId` must match the currently published version
+
+Rate limit:
+
+- max 5 submit attempts per IP per 15 minutes per cycle
+- max 25 submit attempts per IP per 24 hours per cycle
+
+Success response:
+
+- `201`
+- `submissionId`
+- `rowId`
+- confirmation message
+
+Failure responses:
+
+- `400` validation error
+- `404` no published form
+- `409` stale `formVersionId` or already-completed `submissionId`
+- `429` rate limited
+- `503` Smartsheet upstream failure or retryable processing failure
 
 ---
 
-## Open Questions
+## 9. Public Form Validation Rules
 
-| # | Question | Default assumption |
-|---|---|---|
-| 1 | Should program coordinators be able to edit a submission after submitting? | No. If a mistake is made, admin deletes the Smartsheet row and coordinator resubmits. |
-| 2 | Should there be a submission notification email to the admin when a new nomination comes in? | Out of scope for now. Admin monitors Smartsheet directly. |
-| 3 | Should the public form URL include a slug or just the cycleId UUID? | UUID is sufficient. A slug adds complexity without clear benefit. |
-| 4 | Should duplicate submissions (same submitter email + same cycle) be blocked? | No — programs may legitimately submit multiple nominees. Deduplication is Smartsheet's responsibility. |
-| 5 | Should the form support conditional fields (show field B only if field A = X)? | No. Current Gravity Forms usage has no conditional logic. Can be added later. |
-| 6 | File storage: should Vercel Blob files be cleaned up if the Smartsheet row is deleted? | No automated cleanup. Files are small relative to Blob storage limits; manual cleanup if needed. |
-| 7 | Word limit on `long_text` — hard block or soft warning? | Hard block (server rejects if over). Show live counter; turn red at 90% of limit. |
-| 8 | Should the intake form be clonable via the existing template/clone system? | Yes, eventually. Form schema should be included in export-config / clone-config. Phase 3 item. |
+### 9.1 Field-type rules
+
+- `short_text`: non-empty string if required
+- `long_text`: non-empty string if required
+- `email`: valid email format and must end with `@wsu.edu`
+- `number`: numeric input only
+- `select`: value must be one of the published field options
+- `checkbox`: boolean
+- `date`: ISO date string
+- `file`: must reference an uploaded Blob object tied to the same `submissionId`
+
+### 9.2 General validation rules
+
+- unknown fields are rejected
+- fields omitted from the published version are rejected
+- required fields must be present
+- hidden/draft-only fields are never accepted from the client
+
+---
+
+## 10. Smartsheet Mapping Rules
+
+### 10.1 Allowed target column types in v1
+
+- `TEXT_NUMBER`
+- `PICKLIST`
+- `DATE`
+- `CHECKBOX`
+
+The builder must not allow mapping to:
+
+- `CONTACT_LIST`
+- `MULTI_CONTACT_LIST`
+- system-managed columns
+- auto-number columns
+- formula columns
+- unsupported symbol columns
+
+### 10.2 Add-row helper
+
+Implement a dedicated `addRow` helper in `src/lib/smartsheet.ts`.
+
+The helper must:
+
+- accept a typed cell array
+- coerce `null` to `""`
+- return structured errors including `httpStatus` and `errorCode`
+- surface rate limiting as `429` / `4003`
+
+### 10.3 Cell serialization rules
+
+- never send `value: null`
+- never send both `value` and `objectValue` on the same cell
+- `TEXT_NUMBER`: send `value`
+- `PICKLIST`: send `value`; use `strict: true`
+- `DATE`: send ISO date string in the format Smartsheet accepts
+- `CHECKBOX`: send boolean `value`
+
+### 10.4 Picklists
+
+V1 does not support free-form overrides for published select fields.
+
+Therefore:
+
+- all select options are defined in the builder
+- all select options must match the target Smartsheet picklist options at publish time
+- publish is blocked if the option sets are incompatible
+- row creation uses `strict: true`
+
+This avoids off-list picklist writes in v1.
+
+---
+
+## 11. File Upload And Attachment Model
+
+### 11.1 Storage model
+
+- files upload directly from browser to private Vercel Blob
+- the submit route never proxies file bytes
+- file metadata is persisted in `intake_submission_files`
+
+### 11.2 Supported files
+
+V1 supports PDF only.
+
+Limits:
+
+- max size per file: 100 MB
+- one uploaded file per `file` field
+
+### 11.3 Attachment visibility
+
+Reviewer/admin attachment APIs must return a merged attachment list containing:
+
+- existing Smartsheet row attachments
+- intake-upload files from `intake_submission_files`
+
+Normalized attachment payload:
+
+- `id`
+- `name`
+- `url`
+- `source` (`smartsheet` or `intake_upload`)
+
+For `intake_upload` files:
+
+- `url` is a short-lived signed Blob URL generated server-side at request time
+
+### 11.4 Why LINK attachments are not used
+
+V1 does not create Smartsheet LINK attachments for uploaded files.
+
+Reason:
+
+- no need to expose stable public Blob URLs
+- no uncertainty around LINK attachment payload differences
+- reviewer/admin UI can serve private files directly from the app using signed URLs
+
+This is the final v1 decision.
+
+### 11.5 Orphan cleanup
+
+A scheduled cleanup job must:
+
+- find Blob uploads that never reached a completed submission
+- delete orphaned uploads older than 24 hours
+- leave completed submission files untouched
+
+---
+
+## 12. Submission Processing Flow
+
+### 12.1 Happy path
+
+1. Client generates a UUID `submissionId`.
+2. Client loads the published form via `GET /api/submit/[cycleId]`.
+3. Client requests upload tokens for any `file` fields.
+4. Browser uploads files directly to private Blob using the tokenized path scoped to `submissionId`.
+5. Client submits metadata-only payload to `POST /api/submit/[cycleId]`.
+6. Server writes/updates `intake_submissions` to `processing`.
+7. Server validates the live Smartsheet schema.
+8. Server creates the Smartsheet row.
+9. Server updates `intake_submissions` with `row_created`.
+10. Server inserts `intake_submission_files`.
+11. Server marks the submission `completed`.
+12. Server returns `201` with the created `rowId`.
+
+### 12.2 Transaction and retry rules
+
+- The initial `processing` record must be written before the Smartsheet call.
+- If the request is retried with the same `submissionId`:
+  - if already `completed`, return the existing success payload
+  - if `processing`, reject with a retry-safe response
+  - if `failed`, resume from the saved request metadata if possible
+
+This makes the submit route idempotent.
+
+---
+
+## 13. Failure Handling
+
+### 13.1 Validation failure before row creation
+
+Behavior:
+
+- return `400`
+- keep submission status as `failed`
+- do not create a row
+
+### 13.2 Schema drift failure
+
+Behavior:
+
+- set submission status to `invalid_schema`
+- auto-unpublish the intake form
+- write an audit log entry
+- return a generic `503` message to the public client
+
+### 13.3 Smartsheet rate limit
+
+Behavior:
+
+- set submission status to `rate_limited`
+- return `429`
+- mark response as retryable
+
+### 13.4 Row created but DB/file persistence fails
+
+Behavior:
+
+- keep the created `smartsheet_row_id`
+- set submission status to `failed`
+- preserve `request_cells_json` and `request_files_json`
+- allow the same `submissionId` to resume processing without creating a second row
+
+This is the required recovery model for partial failures.
+
+### 13.5 Admin recovery
+
+Admin UI must expose a failed-submissions panel for each cycle showing:
+
+- `submission_id`
+- submitter email
+- current status
+- row ID if created
+- timestamp
+
+Admin actions:
+
+- retry processing
+- mark resolved
+- delete failed record
+
+Admin retry must reuse the existing `submissionId` and `row_id` when present.
+
+---
+
+## 14. Security And PII Rules
+
+### 14.1 Public abuse controls
+
+Required controls:
+
+- IP-based rate limiting using hashed IPs in Postgres
+- honeypot field
+- required `@wsu.edu` email suffix
+- short-lived upload tokens
+- PDF-only upload restriction
+- 100 MB file cap
+- open/close window enforcement
+
+### 14.2 Auth model statement
+
+The intake form is public in v1. It is not identity-proof authenticated.
+
+The `@wsu.edu` rule is an abuse-control and policy-control measure, not proof that the submitter owns the mailbox.
+
+This is acceptable for v1 and is not a blocker.
+
+### 14.3 Audit logging
+
+Audit logs for intake flows must include only operational metadata:
+
+- cycle ID
+- submission ID
+- publish/unpublish events
+- state transitions
+- row ID
+- failure category
+
+Audit logs must not store:
+
+- full public form payloads
+- full nominee narratives
+- Blob URLs
+- raw file metadata beyond what is operationally required
+
+### 14.4 Retention
+
+- completed `intake_submissions`: retain operational metadata per normal app retention
+- request payload snapshots: 30 days after completion, 90 days after failure
+- `intake_rate_limit_events`: 14 days
+- orphan Blob uploads: delete after 24 hours
+
+---
+
+## 15. Reviewer And Admin UI Integration
+
+### 15.1 Reviewer UI
+
+The existing reviewer workflow remains row-based.
+
+Required changes:
+
+- reviewer attachment endpoint merges Smartsheet attachments and intake-upload files
+- reviewer attachment UI renders both sources the same way
+
+No change is required to the core reviewer row-loading model.
+
+### 15.2 Admin preview and troubleshooting
+
+Admin preview routes should use the same merged-attachment model so admins can verify intake-upload visibility before release.
+
+Cycle admin page must also show:
+
+- intake publish status
+- last published version
+- schema-invalid state
+- failed submission count
+
+---
+
+## 16. Publish Rules
+
+Publish is allowed only when:
+
+- all draft fields are valid
+- all mapped columns exist in the current schema snapshot
+- all mapped columns are supported in v1
+- all select options match the target Smartsheet picklist options
+- the cycle has an active Smartsheet connection and sheet ID
+
+Publishing creates a new immutable `intake_form_versions` snapshot and updates `intake_forms.published_version_id`.
+
+Unpublish behavior:
+
+- public `GET /api/submit/[cycleId]` returns `404`
+- public submit attempts are rejected
+- historical submissions remain intact
+
+---
+
+## 17. Definition Of Done
+
+The intake-form build is complete only when all of the following are true:
+
+- admin can create, edit, publish, and unpublish an intake form
+- public route serves only published versions
+- public submit route is metadata-only
+- direct PDF uploads to private Blob work for files up to 100 MB
+- a valid submission creates exactly one Smartsheet row
+- the same `submissionId` cannot create duplicate rows
+- reviewer/admin attachment lists include intake-upload files
+- schema drift blocks submit and auto-unpublishes the form
+- public routes enforce rate limiting and `@wsu.edu` validation
+- failed submissions are visible and retryable in admin UI
+- no audit log stores full public form payloads
+
+---
+
+## 18. Implementation Order
+
+### Phase 1
+
+- Migration 005 tables
+- `addRow` helper
+- intake publish/version model
+- DB-backed rate limiting
+
+### Phase 2
+
+- admin builder
+- publish/unpublish actions
+- form validation at publish time
+
+### Phase 3
+
+- public schema route
+- upload-token route
+- direct Blob uploads
+- metadata-only submit route
+- idempotent submission processing
+
+### Phase 4
+
+- reviewer/admin merged attachment APIs
+- failed-submission admin recovery UI
+- orphan cleanup job
+- end-to-end test coverage
+
+---
+
+## 19. Implementation Notes
+
+- Do not expose CONTACT_LIST or MULTI_CONTACT_LIST in the builder for v1.
+- Do not use Smartsheet URL attachments in v1.
+- Do not let the public route read mutable draft config.
+- Do not proxy file bodies through Vercel Functions.
+- Do not store raw IPs.
+- Do not add `--webpack` to this repo unless a reproduced build regression requires it.

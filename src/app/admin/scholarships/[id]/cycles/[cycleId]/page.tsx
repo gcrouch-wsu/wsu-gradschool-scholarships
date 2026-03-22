@@ -156,6 +156,17 @@ export default async function CycleDetailPage({
     "SELECT id FROM field_configs WHERE cycle_id = $1 LIMIT 1",
     [cycleId]
   );
+
+  const { rows: intakeForms } = await query<{
+    status: string;
+    published_version_id: string | null;
+    updated_at: string;
+  }>(
+    "SELECT status, published_version_id, updated_at FROM intake_forms WHERE cycle_id = $1",
+    [cycleId]
+  );
+  const intakeForm = intakeForms[0];
+
   const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
   const blindReview = viewSettings?.blindReview ?? false;
   const isCycleActive = cycle.status === "active";
@@ -240,17 +251,20 @@ export default async function CycleDetailPage({
             <SetupStep done={!!cycle.schema_synced_at}>
               2. Import schema (sync columns from Smartsheet)
             </SetupStep>
+            <SetupStep done={intakeForm?.status === "published"}>
+              3. Build intake form (optional — skip if using external intake)
+            </SetupStep>
             <SetupStep done={fieldConfigs.length > 0}>
-              3. Configure fields & layout (map columns, set labels, publish)
+              4. Configure fields & layout (map columns, set labels, publish)
             </SetupStep>
             <SetupStep done={!!cycleWithPublished[0]?.published_config_version_id}>
-              4. Publish configuration (make it live for reviewers)
+              5. Publish configuration (make it live for reviewers)
             </SetupStep>
             <SetupStep done={memberships.length > 0}>
-              5. Assign reviewers
+              6. Assign reviewers
             </SetupStep>
             <SetupStep done={isCycleActive}>
-              6. Activate cycle (reviewers can see it)
+              7. Activate cycle (reviewers can see it)
             </SetupStep>
           </ol>
         </div>
@@ -273,6 +287,51 @@ export default async function CycleDetailPage({
           <ApplyTemplateForm cycleId={cycleId} />
           <ExportImportConfig cycleId={cycleId} isPlatformAdmin={user.is_platform_admin} />
           <SchemaDriftWarning cycleId={cycleId} />
+        </section>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-5">
+          <h2 className="text-lg font-medium text-zinc-900">
+            Nomination intake form
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Build a public-facing form to collect nominations directly into your Smartsheet.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <Link
+              href={`/admin/scholarships/${programId}/cycles/${cycleId}/intake-form`}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {intakeForm ? "Edit intake form" : "Build intake form"}
+              <span aria-hidden>→</span>
+            </Link>
+            {intakeForm && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`font-medium ${
+                  intakeForm.status === "published" ? "text-green-700" : "text-zinc-500"
+                }`}>
+                  Status: {intakeForm.status}
+                </span>
+                {intakeForm.status === "published" && (
+                  <Link
+                    href={`/submit/${cycleId}`}
+                    target="_blank"
+                    className="text-blue-600 hover:underline"
+                  >
+                    View live form
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+          {intakeForm?.published_version_id && (
+            <div className="mt-4 rounded bg-zinc-50 p-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">Public URL</div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <code className="break-all text-sm">{`${process.env.NEXT_PUBLIC_APP_URL || ""}/submit/${cycleId}`}</code>
+                {/* Note: In a real browser we would use navigator.clipboard, but for now we just show it */}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-5">

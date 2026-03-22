@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
+import { createSignedIntakeFileUrl } from "@/lib/intake";
 import { getRowAttachments } from "@/lib/smartsheet";
 
 export async function GET(
@@ -84,7 +85,33 @@ export async function GET(
     );
   }
 
+  // 11.3 Attachment visibility: Merge Smartsheet and intake-upload files
+  const { rows: intakeFiles } = await query<{
+    id: string;
+    original_filename: string;
+  }>(
+    "SELECT id, original_filename FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2",
+    [cycleId, rowIdNum]
+  );
+
+  const merged = [
+    ...(result.attachments ?? []).map((a) => ({
+      id: String(a.id),
+      name: a.name,
+      url: a.url,
+      source: "smartsheet" as const,
+      mimeType: a.mimeType,
+    })),
+    ...intakeFiles.map((f) => ({
+      id: f.id,
+      name: f.original_filename,
+      url: createSignedIntakeFileUrl(f.id),
+      source: "intake_upload" as const,
+      mimeType: "application/pdf",
+    })),
+  ];
+
   return NextResponse.json({
-    attachments: result.attachments ?? [],
+    attachments: merged,
   });
 }
