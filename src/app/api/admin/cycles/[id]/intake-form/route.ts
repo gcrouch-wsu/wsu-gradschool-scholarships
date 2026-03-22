@@ -15,6 +15,7 @@ export const runtime = "nodejs";
  * GET: Get form schema + fields for builder
  * POST: Create/Initialize form for cycle (idempotent)
  * PATCH: Update form settings
+ * DELETE: Delete intake form only if it has no submissions
  */
 
 export async function GET(
@@ -145,6 +146,62 @@ export async function PATCH(
     targetType: "intake_form",
     targetId: updated[0].id,
     metadata: { fields_updated: Object.keys(body) }
+  });
+
+  return NextResponse.json({ success: true });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id: cycleId } = await params;
+  if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const intakeSchema = await getIntakeSchemaStatus();
+  if (!intakeSchema.available) {
+    return NextResponse.json(
+      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+      { status: 503 }
+    );
+  }
+
+  const { rows: forms } = await query<{ id: string }>(
+    "SELECT id FROM intake_forms WHERE cycle_id = $1",
+    [cycleId]
+  );
+  const form = forms[0];
+  if (!form) {
+    return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
+  }
+
+  const { rows: counts } = await query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM intake_submissions WHERE intake_form_id = $1",
+    [form.id]
+  );
+  const submissionCount = Number(counts[0]?.count ?? "0");
+  if (submissionCount > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This intake form already has submission history and cannot be deleted. Unpublish it instead if you need to take it offline.",
+      },
+      { status: 409 }
+    );
+  }
+
+  await query("DELETE FROM intake_forms WHERE id = $1", [form.id]);
+
+  await logAudit({
+    actorUserId: user.id,
+    cycleId,
+    actionType: "intake.form_deleted",
+    targetType: "intake_form",
+    targetId: form.id,
   });
 
   return NextResponse.json({ success: true });

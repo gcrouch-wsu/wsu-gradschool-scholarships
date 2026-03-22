@@ -5,6 +5,18 @@ import { query } from "@/lib/db";
 import { getReviewerNominees } from "@/lib/reviewer";
 import { ReviewerScoreForm } from "./ReviewerScoreForm";
 
+function getReviewerPageTitle(
+  nominees: Awaited<ReturnType<typeof getReviewerNominees>>,
+  rowId: number,
+  blindReview: boolean
+) {
+  const currentIndex = nominees?.findIndex((n) => n.id === rowId) ?? -1;
+  if (blindReview) {
+    return currentIndex >= 0 ? `Applicant ${currentIndex + 1}` : "Review applicant";
+  }
+  return nominees?.find((n) => n.id === rowId)?.displayName ?? "Review nominee";
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -15,9 +27,14 @@ export async function generateMetadata({
   if (!user) return { title: "Review nominee" };
   const rowIdNum = parseInt(rowId, 10);
   if (isNaN(rowIdNum)) return { title: "Review nominee" };
+  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
+    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const blindReview =
+    ((viewConfigs[0]?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
-  const current = nominees?.find((n) => n.id === rowIdNum);
-  return { title: current?.displayName ?? "Review nominee" };
+  return { title: getReviewerPageTitle(nominees, rowIdNum, blindReview) };
 }
 
 export default async function ReviewerNomineePage({
@@ -49,17 +66,22 @@ export default async function ReviewerNomineePage({
   const assignment = rows[0];
   if (!assignment) notFound();
 
+  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
+    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+    [cycleId]
+  );
+  const blindReview =
+    ((viewConfigs[0]?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
-  const currentNominee = nominees?.find((n) => n.id === rowIdNum);
-  const displayTitle = currentNominee?.displayName ?? "Review nominee";
+  const displayTitle = getReviewerPageTitle(nominees, rowIdNum, blindReview);
 
   return (
     <div>
       <Link
-        href={`/reviewer/${cycleId}`}
+        href="/reviewer"
         className="text-sm text-zinc-600 hover:underline"
       >
-        ← All nominees
+        ← My scholarships
       </Link>
       <h1 className="mt-4 text-2xl font-semibold text-zinc-900">
         {displayTitle}

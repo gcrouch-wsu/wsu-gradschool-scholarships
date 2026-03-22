@@ -59,6 +59,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [formData, setFormData] = useState<Record<string, string | boolean>>({});
   const [files, setFiles] = useState<Record<string, UploadedFileEntry[]>>({});
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
+  const [draggingFieldKey, setDraggingFieldKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -78,8 +79,11 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
       .finally(() => setLoading(false));
   }, [cycleId]);
 
-  const handleFileChange = async (fieldKey: string, allowMultiple: boolean, e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
+  const uploadFilesForField = async (
+    fieldKey: string,
+    allowMultiple: boolean,
+    selectedFiles: File[]
+  ) => {
     const filesToUpload = allowMultiple ? selectedFiles : selectedFiles.slice(0, 1);
     if (filesToUpload.length === 0) return;
 
@@ -148,6 +152,19 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
       setError(`Upload failed: ${err.message}`);
     } finally {
       setUploading((current) => ({ ...current, [fieldKey]: false }));
+      setDraggingFieldKey((current) => (current === fieldKey ? null : current));
+    }
+  };
+
+  const handleFileChange = async (
+    fieldKey: string,
+    allowMultiple: boolean,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    try {
+      await uploadFilesForField(fieldKey, allowMultiple, selectedFiles);
+    } finally {
       e.target.value = "";
     }
   };
@@ -277,7 +294,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* Submitter Info */}
-          <div className="pb-6 border-b border-zinc-100">
+          <div className="pb-6 border-b border-zinc-100 md:col-span-2">
             <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4">Your Information</h2>
             <div>
               <label className="block text-sm font-medium text-zinc-700">
@@ -305,7 +322,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             </div>
           </div>
 
-          <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4">Nomination Details</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-500 mb-4 md:col-span-2">Nomination Details</h2>
 
           {schema.fields.map((field) => {
             const id = `field_${field.field_key}`;
@@ -380,11 +397,43 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                       multiple={allowMultiple}
                       onChange={(e) => handleFileChange(field.field_key, allowMultiple, e)}
                       disabled={uploading[field.field_key]}
-                      className="block w-full text-sm text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200"
+                      className="sr-only"
                     />
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {allowMultiple ? "You may upload multiple PDF files for this question." : "Upload one PDF file for this question."}
-                    </p>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (!uploading[field.field_key]) setDraggingFieldKey(field.field_key);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                          setDraggingFieldKey((current) => (current === field.field_key ? null : current));
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (uploading[field.field_key]) return;
+                        const droppedFiles = Array.from(e.dataTransfer.files || []);
+                        void uploadFilesForField(field.field_key, allowMultiple, droppedFiles);
+                      }}
+                      className={`rounded-lg border-2 border-dashed px-4 py-5 text-center transition ${
+                        draggingFieldKey === field.field_key
+                          ? "border-[var(--wsu-crimson)] bg-rose-50"
+                          : "border-zinc-300 bg-zinc-50"
+                      }`}
+                    >
+                      <p className="text-sm font-medium text-zinc-800">
+                        Drag and drop PDF files here
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        {allowMultiple ? "You may upload multiple PDF files for this question." : "Upload one PDF file for this question."}
+                      </p>
+                      <label
+                        htmlFor={id}
+                        className="mt-3 inline-flex cursor-pointer items-center rounded border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+                      >
+                        Choose PDF{allowMultiple ? "s" : ""}
+                      </label>
+                    </div>
                     {uploading[field.field_key] && (
                       <p className="mt-2 text-xs text-blue-600 animate-pulse font-medium">Uploading to secure storage...</p>
                     )}

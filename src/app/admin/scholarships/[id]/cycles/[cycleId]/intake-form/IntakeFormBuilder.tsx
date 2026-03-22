@@ -383,6 +383,28 @@ export default function IntakeFormBuilder({
     }
   };
 
+  const handleDeleteForm = async () => {
+    if (submissions.length > 0) {
+      setError("This intake form already has submission history and cannot be deleted. Unpublish it instead if you need to take it offline.");
+      return;
+    }
+    if (!confirm("Delete this intake form? This removes the draft, published versions, and field mapping for this cycle.")) return;
+
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete intake form");
+      }
+      router.push(`/admin/scholarships/${programId}/cycles/${cycleId}`);
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const handleResolve = async (submissionId: string) => {
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}/resolve`, { method: "POST" });
@@ -404,6 +426,7 @@ export default function IntakeFormBuilder({
       ALLOWED_SMARTSHEET_TYPES.includes(column.type) &&
       !fields.some((field) => field.target_column_id === column.id)
   );
+  const hasSubmissionHistory = submissions.length > 0;
 
   return (
     <div className="mt-6 space-y-6">
@@ -830,6 +853,27 @@ export default function IntakeFormBuilder({
               </tbody>
             </table>
           </div>
+        </div>
+      </AccordionCard>
+
+      <AccordionCard title="Danger Zone" defaultOpen={false}>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="text-sm font-semibold text-red-900">Delete intake form</h3>
+          <p className="mt-1 text-sm text-red-800">
+            This permanently removes the draft form and any published intake versions for this cycle.
+          </p>
+          <p className="mt-2 text-xs text-red-700">
+            {hasSubmissionHistory
+              ? "Delete is unavailable because this intake form already has submission history."
+              : "Delete is currently available because this intake form has no submissions yet."}
+          </p>
+          <button
+            type="button"
+            onClick={handleDeleteForm}
+            className="mt-4 rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+          >
+            Delete intake form
+          </button>
         </div>
       </AccordionCard>
 
