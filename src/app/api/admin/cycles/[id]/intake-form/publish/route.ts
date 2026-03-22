@@ -8,6 +8,10 @@ import {
   INTAKE_ALLOWED_FIELD_TYPES,
 } from "@/lib/intake";
 import {
+  buildIntakeLayoutFromFields,
+  validateLayoutJson,
+} from "@/lib/layout";
+import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
@@ -112,6 +116,7 @@ export async function POST(
     instructions_text: form.instructions_text,
     opens_at: form.opens_at,
     closes_at: form.closes_at,
+    layout_json: null as unknown,
     fields: fields.map(f => ({
       field_key: f.field_key,
       label: f.label,
@@ -125,6 +130,22 @@ export async function POST(
       settings_json: f.settings_json
     }))
   };
+
+  const layoutValidation = validateLayoutJson(
+    form.layout_json ?? buildIntakeLayoutFromFields(fields),
+    {
+      knownFieldKeys: fields.map((field) => field.field_key),
+      requireAllPlaced: true,
+      allowedSectionKeys: ["main"],
+    }
+  );
+  if (!layoutValidation.ok) {
+    return NextResponse.json(
+      { error: `Cannot publish until the intake layout is valid: ${layoutValidation.error}` },
+      { status: 400 }
+    );
+  }
+  snapshot_json.layout_json = layoutValidation.normalized;
 
   const { rows: newVersion } = await query<{ id: string }>(
     `INSERT INTO intake_form_versions (intake_form_id, version_number, status, snapshot_json, created_by_user_id, published_at)

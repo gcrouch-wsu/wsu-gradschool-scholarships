@@ -63,6 +63,8 @@ This is the **Workflow** platform family, distinct from `smartsheets_view` (Publ
 ### Intake-form build spec
 
 The canonical intake-form build document now lives in `forms.md`.
+The shared future direction for intake/reviewer layout builders lives in `layout-builder-spec.md`.
+The implementation-ready blueprint for that refactor lives in `layout-builder-blueprint.md`.
 
 ---
 

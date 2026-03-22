@@ -109,7 +109,8 @@ export async function POST(
     view_type: string;
     name: string;
     settings_json: unknown;
-  }>("SELECT id, view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [
+    layout_json: unknown;
+  }>("SELECT id, view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [
     sourceCycleId,
   ]);
 
@@ -187,8 +188,14 @@ export async function POST(
   const viewConfigIdMap = new Map<string, string>();
   for (const vc of sourceViewConfigs) {
     const { rows } = await tx<{ id: string }>(
-      "INSERT INTO view_configs (cycle_id, view_type, name, settings_json) VALUES ($1, $2, $3, $4) RETURNING id",
-      [targetCycleId, vc.view_type, vc.name, vc.settings_json ? JSON.stringify(vc.settings_json) : "{}"]
+      "INSERT INTO view_configs (cycle_id, view_type, name, settings_json, layout_json) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+      [
+        targetCycleId,
+        vc.view_type,
+        vc.name,
+        vc.settings_json ? JSON.stringify(vc.settings_json) : "{}",
+        vc.layout_json ? JSON.stringify(vc.layout_json) : null,
+      ]
     );
     viewConfigIdMap.set(vc.id, rows[0]!.id);
   }
@@ -270,7 +277,8 @@ export async function POST(
     view_type: string;
     name: string;
     settings_json: unknown;
-  }>("SELECT id, view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [targetCycleId]);
+    layout_json: unknown;
+  }>("SELECT id, view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [targetCycleId]);
   const { rows: snapshotViewSections } = await tx<{
     id: string;
     view_config_id: string;
@@ -300,6 +308,7 @@ export async function POST(
     fieldConfigs: snapshotFieldConfigs,
     permissions: snapshotPermissions,
     viewConfigs: snapshotViewConfigs,
+    layout_json: snapshotViewConfigs[0]?.layout_json ?? null,
     viewSections: snapshotViewSections,
     sectionFields: snapshotSectionFields,
     sheetMetadata: cycleMeta[0] ?? {},

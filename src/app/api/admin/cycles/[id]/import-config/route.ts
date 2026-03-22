@@ -3,6 +3,10 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query, withTransaction } from "@/lib/db";
+import {
+  buildReviewerLayoutFromFields,
+  validateLayoutJson,
+} from "@/lib/layout";
 
 export async function POST(
   request: NextRequest,
@@ -20,10 +24,58 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { roles, fieldConfigs, permissions } = body;
+  const { roles, fieldConfigs, permissions, viewSections, sectionFields } = body;
   if (!Array.isArray(roles) || !Array.isArray(fieldConfigs)) {
     return NextResponse.json(
       { error: "roles and fieldConfigs arrays are required" },
+      { status: 400 }
+    );
+  }
+
+  const viewType = body.viewConfigs?.[0]?.view_type ?? "tabbed";
+  const importedSections =
+    Array.isArray(viewSections) && viewSections.length > 0
+      ? viewSections.map((section: { section_key: string; label: string; sort_order?: number }, index: number) => ({
+          section_key: section.section_key,
+          label: section.label,
+          sort_order: index,
+        }))
+      : [{ section_key: "main", label: "Review", sort_order: 0 }];
+  const sectionByFieldKey = new Map<string, string>();
+  for (const sectionField of Array.isArray(sectionFields) ? sectionFields : []) {
+    if (
+      typeof sectionField?.field_key === "string" &&
+      typeof sectionField?.section_key === "string"
+    ) {
+      sectionByFieldKey.set(sectionField.field_key, sectionField.section_key);
+    }
+  }
+  const importedPinnedFieldKeys = Array.isArray(body.viewConfigs?.[0]?.settings_json?.pinnedFieldKeys)
+    ? body.viewConfigs[0].settings_json.pinnedFieldKeys.filter(
+        (fieldKey: unknown): fieldKey is string => typeof fieldKey === "string"
+      )
+    : [];
+  const reviewerLayoutCandidate =
+    body.viewConfigs?.[0]?.layout_json ??
+    buildReviewerLayoutFromFields(
+      fieldConfigs.map((fieldConfig: { field_key: string; sort_order?: number }) => ({
+        fieldKey: fieldConfig.field_key,
+        sectionKey: sectionByFieldKey.get(fieldConfig.field_key),
+        sortOrder: fieldConfig.sort_order,
+        pinned: importedPinnedFieldKeys.includes(fieldConfig.field_key),
+      })),
+      importedSections,
+      importedPinnedFieldKeys
+    );
+  const layoutValidation = validateLayoutJson(reviewerLayoutCandidate, {
+    knownFieldKeys: fieldConfigs.map((fieldConfig: { field_key: string }) => fieldConfig.field_key),
+    pinnedFieldKeys: importedPinnedFieldKeys,
+    requireAllPlaced: true,
+    allowedSectionKeys: importedSections.map((section: { section_key: string }) => section.section_key),
+  });
+  if (!layoutValidation.ok) {
+    return NextResponse.json(
+      { error: `Imported reviewer layout is invalid: ${layoutValidation.error}` },
       { status: 400 }
     );
   }
@@ -84,30 +136,46 @@ export async function POST(
       }
     }
 
-    const viewType = body.viewConfigs?.[0]?.view_type ?? "tabbed";
     if (["tabbed", "stacked", "accordion", "list_detail"].includes(viewType)) {
       const { rows: vcRows } = await tx<{ id: string }>(
-        `INSERT INTO view_configs (cycle_id, view_type, name, settings_json)
-         VALUES ($1, $2, 'Review', '{}') RETURNING id`,
-        [targetCycleId, viewType]
+        `INSERT INTO view_configs (cycle_id, view_type, name, settings_json, layout_json)
+         VALUES ($1, $2, 'Review', $3, $4) RETURNING id`,
+        [
+          targetCycleId,
+          viewType,
+          JSON.stringify(body.viewConfigs?.[0]?.settings_json ?? {}),
+          JSON.stringify(layoutValidation.normalized),
+        ]
       );
       const viewConfigId = vcRows[0]?.id;
       if (viewConfigId) {
-        const { rows: vsRows } = await tx<{ id: string }>(
-          `INSERT INTO view_sections (view_config_id, section_key, label, sort_order)
-           VALUES ($1, 'main', 'Review', 0) RETURNING id`,
-          [viewConfigId]
-        );
-        const viewSectionId = vsRows[0]?.id;
-        if (viewSectionId) {
-          const { rows: fcRows } = await tx<{ id: string }>(
-            "SELECT id FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
-            [targetCycleId]
+        const usesSections = ["tabbed", "stacked", "accordion"].includes(viewType);
+        const sectionsForLegacyTables = usesSections
+          ? importedSections
+          : [{ section_key: "main", label: "Review", sort_order: 0 }];
+        const sectionKeyToId = new Map<string, string>();
+        for (const [index, section] of sectionsForLegacyTables.entries()) {
+          const { rows: vsRows } = await tx<{ id: string }>(
+            `INSERT INTO view_sections (view_config_id, section_key, label, sort_order)
+             VALUES ($1, $2, $3, $4) RETURNING id`,
+            [viewConfigId, section.section_key, section.label, index]
           );
-          for (let i = 0; i < fcRows.length; i++) {
+          if (vsRows[0]?.id) {
+            sectionKeyToId.set(section.section_key, vsRows[0].id);
+          }
+        }
+        const { rows: fcRows } = await tx<{ id: string; field_key: string }>(
+          "SELECT id, field_key FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+          [targetCycleId]
+        );
+        const defaultSectionKey = sectionsForLegacyTables[0]?.section_key ?? "main";
+        for (const [index, fieldConfig] of fcRows.entries()) {
+          const sectionKey = sectionByFieldKey.get(fieldConfig.field_key) ?? defaultSectionKey;
+          const sectionId = sectionKeyToId.get(sectionKey) ?? sectionKeyToId.get(defaultSectionKey);
+          if (sectionId) {
             await tx(
               "INSERT INTO section_fields (view_section_id, field_config_id, sort_order) VALUES ($1, $2, $3)",
-              [viewSectionId, fcRows[i]!.id, i]
+              [sectionId, fieldConfig.id, index]
             );
           }
         }
@@ -151,7 +219,8 @@ export async function POST(
       view_type: string;
       name: string;
       settings_json: unknown;
-    }>("SELECT id, view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [targetCycleId]);
+      layout_json: unknown;
+    }>("SELECT id, view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [targetCycleId]);
     const { rows: snapshotViewSections } = await tx<{
       id: string;
       view_config_id: string;
@@ -181,6 +250,7 @@ export async function POST(
       fieldConfigs: snapshotFieldConfigs,
       permissions: snapshotPermissions,
       viewConfigs: snapshotViewConfigs,
+      layout_json: layoutValidation.normalized,
       viewSections: snapshotViewSections,
       sectionFields: snapshotSectionFields,
       sheetMetadata: cycleMeta[0] ?? {},

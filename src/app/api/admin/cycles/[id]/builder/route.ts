@@ -3,6 +3,11 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query, withTransaction } from "@/lib/db";
+import {
+  buildReviewerLayoutFromFields,
+  readLayoutJsonOrFallback,
+  validateLayoutJson,
+} from "@/lib/layout";
 
 export async function GET(
   _request: NextRequest,
@@ -91,7 +96,8 @@ export async function GET(
     view_type: string;
     name: string;
     settings_json: unknown;
-  }>("SELECT id, view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [
+    layout_json: unknown;
+  }>("SELECT id, view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [
     cycleId,
   ]);
 
@@ -122,12 +128,45 @@ export async function GET(
     [cycleId]
   );
 
+  const defaultSections = [{ section_key: "main", label: "Review", sort_order: 0 }];
+  const builderSections = viewSections.length > 0 ? viewSections : defaultSections;
+  const fieldIdToSectionKey = Object.fromEntries(
+    sectionFields.map((sectionField) => {
+      const section = viewSections.find((candidate) => candidate.id === sectionField.view_section_id);
+      return [sectionField.field_config_id, section?.section_key ?? "main"];
+    })
+  );
+  const firstViewSettings = viewConfigs[0]?.settings_json as { pinnedFieldKeys?: string[] } | null;
+  const normalizedLayout = viewConfigs[0]
+    ? readLayoutJsonOrFallback(
+        viewConfigs[0].layout_json,
+        buildReviewerLayoutFromFields(
+          fieldConfigs.map((fieldConfig) => ({
+            fieldKey: fieldConfig.field_key,
+            sectionKey: fieldIdToSectionKey[fieldConfig.id] ?? "main",
+            sortOrder: fieldConfig.sort_order,
+            pinned: (firstViewSettings?.pinnedFieldKeys ?? []).includes(fieldConfig.field_key),
+          })),
+          builderSections,
+          firstViewSettings?.pinnedFieldKeys ?? []
+        ),
+        {
+          knownFieldKeys: fieldConfigs.map((fieldConfig) => fieldConfig.field_key),
+          pinnedFieldKeys: firstViewSettings?.pinnedFieldKeys ?? [],
+          requireAllPlaced: false,
+          allowedSectionKeys: builderSections.map((section) => section.section_key),
+        }
+      )
+    : null;
+
   return NextResponse.json({
     columns,
     fieldConfigs,
     roles,
     permissions,
-    viewConfigs,
+    viewConfigs: viewConfigs.map((viewConfig, index) =>
+      index === 0 ? { ...viewConfig, layout_json: normalizedLayout } : viewConfig
+    ),
     viewSections,
     sectionFields,
   });
@@ -187,6 +226,36 @@ export async function POST(
 
   const validPurposes = ["identity", "subtitle", "narrative", "score", "comments", "metadata", "attachment", "status"];
   const validDisplayTypes = ["header", "short_text", "long_text", "score_select", "textarea", "badge", "number", "attachment_list"];
+  const sectionList =
+    Array.isArray(sections) && sections.length > 0
+      ? sections.map((section, index) => ({
+          section_key: section.section_key,
+          label: section.label,
+          sort_order: index,
+        }))
+      : [{ section_key: "main", label: "Review", sort_order: 0 }];
+  const reviewerLayout = buildReviewerLayoutFromFields(
+    fieldConfigs.map((fieldConfig, index) => ({
+      fieldKey: fieldConfig.fieldKey,
+      sectionKey: fieldConfig.sectionKey,
+      sortOrder: fieldConfig.sortOrder ?? index,
+      pinned: (pinnedFieldKeys ?? []).includes(fieldConfig.fieldKey),
+    })),
+    sectionList,
+    pinnedFieldKeys ?? []
+  );
+  const layoutValidation = validateLayoutJson(reviewerLayout, {
+    knownFieldKeys: fieldConfigs.map((fieldConfig) => fieldConfig.fieldKey),
+    pinnedFieldKeys: pinnedFieldKeys ?? [],
+    requireAllPlaced: true,
+    allowedSectionKeys: sectionList.map((section) => section.section_key),
+  });
+  if (!layoutValidation.ok) {
+    return NextResponse.json(
+      { error: `Generated reviewer layout is invalid: ${layoutValidation.error}` },
+      { status: 400 }
+    );
+  }
 
   const result = await withTransaction(async (tx) => {
   await tx("DELETE FROM field_configs WHERE cycle_id = $1", [cycleId]);
@@ -262,8 +331,8 @@ export async function POST(
   const vt = viewType || "tabbed";
   if (["tabbed", "stacked", "accordion", "list_detail"].includes(vt)) {
     const { rows: vcRows } = await tx<{ id: string }>(
-      `INSERT INTO view_configs (cycle_id, view_type, name, settings_json)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO view_configs (cycle_id, view_type, name, settings_json, layout_json)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
       [cycleId, vt, "Review", JSON.stringify({
         colors: colors ?? {},
@@ -271,17 +340,17 @@ export async function POST(
         hiddenFieldKeys: Array.isArray(hiddenFieldKeys) ? hiddenFieldKeys : [],
         purposeOverrides: purposeOverrides ?? {},
         ...preserved,
-      })]
+      }), JSON.stringify(layoutValidation.normalized)]
     );
     const viewConfigId = vcRows[0]?.id;
     if (viewConfigId) {
       const usesSections = ["tabbed", "stacked", "accordion"].includes(vt);
-      const sectionList = usesSections && Array.isArray(sections) && sections.length > 0
+      const sectionListForLegacyTables = usesSections && Array.isArray(sections) && sections.length > 0
         ? sections
         : [{ section_key: "main", label: "Review", sort_order: 0 }];
       const sectionKeyToId: Record<string, string> = {};
-      for (let i = 0; i < sectionList.length; i++) {
-        const s = sectionList[i]!;
+      for (let i = 0; i < sectionListForLegacyTables.length; i++) {
+        const s = sectionListForLegacyTables[i]!;
         const { rows: vsRows } = await tx<{ id: string }>(
           `INSERT INTO view_sections (view_config_id, section_key, label, sort_order)
            VALUES ($1, $2, $3, $4)
@@ -295,7 +364,7 @@ export async function POST(
         [cycleId]
       );
       const fieldKeyToId = Object.fromEntries(fcRows.map((r) => [r.field_key, r.id]));
-      const defaultSectionKey = sectionList[0]?.section_key ?? "main";
+      const defaultSectionKey = sectionListForLegacyTables[0]?.section_key ?? "main";
       for (let i = 0; i < fcRows.length; i++) {
         const fc = fcRows[i]!;
         const fcPayload = fieldConfigs[i];
@@ -354,7 +423,8 @@ export async function POST(
     view_type: string;
     name: string;
     settings_json: unknown;
-  }>("SELECT id, view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [cycleId]);
+    layout_json: unknown;
+  }>("SELECT id, view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [cycleId]);
   const { rows: snapshotViewSections } = await tx<{
     id: string;
     view_config_id: string;
@@ -391,6 +461,7 @@ export async function POST(
     fieldConfigs: snapshotFieldConfigs,
     permissions: snapshotPermissions,
     viewConfigs: snapshotViewConfigs,
+    layout_json: layoutValidation.normalized,
     viewSections: snapshotViewSections,
     sectionFields: snapshotSectionFields,
     sheetMetadata: cycleMeta[0] ?? {},

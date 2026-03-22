@@ -51,7 +51,34 @@ export async function GET(
     view_type: string;
     name: string;
     settings_json: unknown;
-  }>("SELECT view_type, name, settings_json FROM view_configs WHERE cycle_id = $1", [cycleId]);
+    layout_json: unknown;
+  }>("SELECT view_type, name, settings_json, layout_json FROM view_configs WHERE cycle_id = $1", [cycleId]);
+  const { rows: viewSections } = await query<{
+    section_key: string;
+    label: string;
+    sort_order: number;
+  }>(
+    `SELECT vs.section_key, vs.label, vs.sort_order
+     FROM view_sections vs
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     WHERE vc.cycle_id = $1
+     ORDER BY vs.sort_order`,
+    [cycleId]
+  );
+  const { rows: sectionFields } = await query<{
+    section_key: string;
+    field_key: string;
+    sort_order: number;
+  }>(
+    `SELECT vs.section_key, fc.field_key, sf.sort_order
+     FROM section_fields sf
+     JOIN view_sections vs ON vs.id = sf.view_section_id
+     JOIN view_configs vc ON vc.id = vs.view_config_id
+     JOIN field_configs fc ON fc.id = sf.field_config_id
+     WHERE vc.cycle_id = $1
+     ORDER BY sf.sort_order`,
+    [cycleId]
+  );
   const { rows: cycle } = await query<{
     cycle_key: string;
     cycle_label: string;
@@ -75,6 +102,8 @@ export async function GET(
     fieldConfigs,
     permissions,
     viewConfigs,
+    viewSections,
+    sectionFields,
   };
 
   return NextResponse.json(exportData);

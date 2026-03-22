@@ -1,30 +1,42 @@
 # Smartsheet Native Attachment Mirroring Spec
 
-Status: Draft future-build spec  
-Repo: `scholarship-review-platform`  
+Status: Implementation-ready spec — post-v1 build
+Repo: `scholarship-review-platform`
 Last updated: 2026-03-22
 
-This document scopes a future extension to the intake system where uploaded PDFs are mirrored into Smartsheet as native `FILE` attachments so Smartsheet becomes the final file system of record, not just the row-data source of truth.
+---
 
-This is intentionally separate from `forms.md` because the current shipped intake contract is still:
+## Purpose
 
-- row data writes directly to Smartsheet
-- uploaded files live in private Vercel Blob
-- reviewer/admin attachment APIs merge Smartsheet attachments plus intake-upload files
+This platform is designed to support any workflow that uses Smartsheet as a source of truth for structured row data — not just graduate scholarship review. Different programs, departments, and use cases will configure intake forms for different purposes: nomination packets, grant submissions, project requests, compliance filings, and more.
 
-This document defines the future native-attachment build only.
+Attachment behavior varies significantly across those contexts. Some programs submit large required PDFs that must be permanently archived alongside the nominee record. Other workflows attach lightweight supporting documents where Smartsheet visibility is more useful than long-term Blob storage.
+
+The platform already addresses long-term file archiving through the existing zip export feature, which allows admins to pull all attached files for a cycle into a single archive. That mechanism is the primary defense against API outages and attachment loss for high-risk programs. It is intentionally decoupled from this feature.
+
+This spec adds a complementary option for programs where Smartsheet is the natural file record: a per-field toggle in the intake builder that, when enabled, causes that field's uploaded files to be mirrored into Smartsheet as native `FILE` attachments after submission. This is an opt-in feature at the field level, not a platform-wide requirement. Programs that do not check the box continue to work exactly as they do today. Programs that do check it get Smartsheet as their file record for that field.
+
+The design is intentionally lightweight:
+
+- Blob remains the upload layer for all programs, regardless of this setting
+- Sync is asynchronous so submission reliability is not coupled to Smartsheet API availability
+- Each attachment field opts in independently, so a form can mix native-sync fields and blob-only fields
+- The 30 MB Smartsheet limit applies only to fields with sync enabled; blob-only fields retain the 100 MB cap
+
+This document defines the future native-attachment build only. The current shipped intake contract — files in Blob, reviewer/admin APIs merging Smartsheet and Blob attachments — remains unchanged for all forms that do not enable this feature.
 
 ---
 
 ## 1. Goal
 
-After a public intake form submission creates a Smartsheet row, each uploaded PDF should be attached to that row as a native Smartsheet `FILE` attachment.
+When an admin enables "Push to Smartsheet" on an attachment field, uploaded PDFs from that field should be mirrored into Smartsheet as native `FILE` attachments on the submission's row.
 
 Target outcome:
 
-- Smartsheet remains the canonical record for nominee row data
-- Smartsheet also becomes the canonical long-term store for attached PDFs
-- Blob is retained only as a secure staging layer during upload and mirroring
+- Smartsheet becomes the canonical long-term store for files from enabled fields
+- Blob is the staging layer only; it can be cleaned up after sync completes
+- Programs that do not enable the option are unaffected
+- Programs that do enable it get Smartsheet visibility without changing their submission flow
 
 ---
 
@@ -33,16 +45,15 @@ Target outcome:
 This build does not:
 
 - use Smartsheet `LINK` attachments
-- replace the existing reviewer field-mapping builder
+- replace the zip export feature or the long-term Blob archiving it provides
 - move public file upload bytes through the public submit route
 - support arbitrary file types beyond PDF
-- preserve the current 100 MB upload cap when native Smartsheet mirroring is enabled
+- apply a 30 MB cap to fields that do not have sync enabled
+- add a form-level sync toggle; the toggle is per attachment field
 
 ---
 
 ## 3. External Constraints
-
-These constraints drive the architecture.
 
 ### 3.1 Smartsheet attachment limits
 
@@ -62,115 +73,123 @@ Per current Vercel Node.js function limits:
 
 - Node runtime is required
 - duration and memory are finite even on Pro/Enterprise
-- long-running file proxy work should not block the public submission route
+- long-running file proxy work must not block the public submission route
 
 Reference:
 
 - https://vercel.com/docs/functions/limitations
 
-### 3.3 Architectural consequence
+### 3.3 Architectural consequence of the 30 MB cap
 
-Because Smartsheet native attachments cap at `30 MB`, a future “Smartsheet is the file source of truth” mode cannot keep the current v1 `100 MB` file limit unchanged.
+Smartsheet native attachments cap at `30 MB`. This is a hard constraint, not a configuration option.
 
-Final decision for this future feature:
+Final decision:
 
-- if native Smartsheet attachment mirroring is enabled, mirrored file uploads must be capped at `30 MB`
-- do not promise native Smartsheet storage for files larger than `30 MB`
+- when `push_to_smartsheet = true` on a field, that field's upload cap becomes `30 MB`
+- the upload-token route enforces this cap per field at token issuance time
+- blob-only fields retain the `100 MB` cap
 
 ---
 
 ## 4. Final Design Decisions
 
-### 4.1 Blob remains the staging layer
+### 4.1 Sync is per attachment field
 
-Browser uploads still go directly to private Vercel Blob first.
+The "Push to Smartsheet" setting lives on the attachment field definition, not on the intake form.
+
+Reason:
+
+- a single form may have one required-PDF field worth mirroring and one lightweight reference field that does not need it
+- form-level toggles would force an all-or-nothing decision per program
+- per-field control matches how the platform already handles other field behaviors (required flag, blind-review hiding, column mapping)
+
+### 4.2 Blob remains the staging layer for all programs
+
+Browser uploads still go directly to private Vercel Blob first, regardless of the push setting.
 
 Reason:
 
 - avoids serverless body limits
-- preserves the current public upload UX
-- gives the app a durable object to retry from if Smartsheet attachment sync fails
+- preserves submission UX and reliability
+- gives the worker a durable retry source if Smartsheet is temporarily unavailable
 
-### 4.2 Smartsheet `FILE` attachments only
+### 4.3 Smartsheet `FILE` attachments only
 
 This feature uses native Smartsheet file attachments, not `LINK` attachments.
 
 Reason:
 
-- `FILE` attachments are the only mode that makes Smartsheet the true binary record
+- `FILE` attachments make Smartsheet the true binary record
 - `LINK` attachments still leave Blob as the real storage layer
 
-### 4.3 Attachment mirroring is asynchronous
+### 4.4 Attachment mirroring is asynchronous
 
 The public `POST /api/submit/[cycleId]` route must not upload files to Smartsheet inline.
 
 Instead:
 
 1. public submit creates the row and persists staged file metadata
-2. file records enter a pending sync state
-3. a background worker or cron job mirrors staged PDFs into Smartsheet
+2. file records with `push_to_smartsheet = true` enter a pending sync state
+3. a background cron worker mirrors them into Smartsheet
 
-### 4.4 Submit success is row-first, attachment-sync-second
+### 4.5 Submit success is row-first, attachment-sync-second
 
 The submission is considered successful once:
 
 - the Smartsheet row exists
 - intake submission/file metadata is persisted
 
-Attachment mirroring is a second phase with its own status model.
+Attachment mirroring is a second phase with its own status model. A sync failure does not invalidate the submission.
 
-### 4.5 Reviewer/admin APIs stay merged during transition
+### 4.6 Reviewer/admin APIs stay merged
 
-Attachment APIs should continue to return a merged list, but with stricter precedence:
+Attachment APIs continue to return a merged list with strict precedence:
 
 - if a file has already synced to Smartsheet, return the Smartsheet attachment entry as the primary copy
-- if a file is still pending or retrying, return a temporary staged-Blob attachment entry
-- if sync has permanently failed, admin preview should show the staged file plus sync status/error; reviewer UI should not show failed internal-only states
+- if a file is still pending or retrying, return a staged-Blob fallback entry with a fresh signed URL
+- if sync has permanently failed, admin preview shows the staged file plus sync status; reviewer UI does not surface internal sync state
 
-### 4.6 Blob is deleted only after safe sync completion
-
-Do not delete the staged Blob immediately after a successful Smartsheet attach.
+### 4.7 Blob is deleted only after confirmed sync
 
 Final decision:
 
-- retain staged Blob files for `24 hours` after successful Smartsheet sync
-- the cleanup job may then delete them if `smartsheet_attachment_id` is present and sync status is `synced`
+- retain staged Blob files for `24 hours` after a successful Smartsheet sync
+- the cleanup job may delete them only when `smartsheet_attachment_id` is set and sync status is `synced`
 
-This gives one short repair window while still making Smartsheet the long-term source of truth.
+Blob-only files (where `push_to_smartsheet = false`) follow the existing orphan and retention cleanup rules and are not touched by this feature's cleanup logic.
 
 ---
 
 ## 5. Data Model Changes
 
-This feature should extend existing intake tables instead of introducing a second parallel file table.
+This feature extends existing intake tables.
 
 ### 5.1 Migration
 
-Create a future migration:
+Create migration at the next available sequential number at build time.
 
-- `006_smartsheet_attachment_sync.sql`
+Working placeholder: `006_smartsheet_attachment_sync.sql`
 
-### 5.2 `intake_forms`
+Assign the actual number based on whatever migrations ship between now and when this feature builds.
+
+### 5.2 `field_configs`
 
 Add:
 
-- `file_storage_mode VARCHAR(30) NOT NULL DEFAULT 'blob_only'`
+- `push_to_smartsheet BOOLEAN NOT NULL DEFAULT FALSE`
 
-Allowed values:
+This flag is only meaningful on file-type fields. It is safe to add to all `field_configs` rows with a default of `false`.
 
-- `blob_only`
-- `smartsheet_native`
+Effect:
 
-Meaning:
-
-- `blob_only`: current v1 behavior
-- `smartsheet_native`: staged in Blob, then mirrored into Smartsheet `FILE` attachments
+- `false` (default): file is uploaded to Blob and stays there; current v1 behavior
+- `true`: file is uploaded to Blob and then mirrored into Smartsheet as a native `FILE` attachment; upload cap is `30 MB`
 
 ### 5.3 `intake_submission_files`
 
-Add:
+Add sync tracking columns:
 
-- `attachment_sync_status VARCHAR(30) NOT NULL DEFAULT 'pending'`
+- `attachment_sync_status VARCHAR(30) NOT NULL DEFAULT 'not_applicable'`
 - `smartsheet_attachment_id BIGINT`
 - `smartsheet_attachment_name VARCHAR(255)`
 - `sync_attempt_count INT NOT NULL DEFAULT 0`
@@ -183,44 +202,50 @@ Add:
 
 Allowed `attachment_sync_status` values:
 
-- `pending`
-- `syncing`
-- `synced`
-- `retryable_failed`
-- `permanent_failed`
-- `deleted_from_blob`
+- `not_applicable`: field has `push_to_smartsheet = false`; sync will never run for this file
+- `pending`: queued, not yet picked up by a worker
+- `syncing`: claimed by the current worker run
+- `synced`: successfully attached to Smartsheet
+- `retryable_failed`: last attempt failed with a transient error; will be retried
+- `permanent_failed`: max attempts exhausted or non-retryable error; requires admin action
+- `deleted_from_blob`: staged Blob cleaned up after successful sync
+
+At submission time: if `push_to_smartsheet = false` on the field, insert with `attachment_sync_status = 'not_applicable'`. If `push_to_smartsheet = true`, insert with `attachment_sync_status = 'pending'`.
 
 ### 5.4 `intake_submissions`
 
-Add an aggregate file-sync status for admin visibility:
+Add an aggregate sync status for admin visibility:
 
 - `attachment_sync_status VARCHAR(30) NOT NULL DEFAULT 'not_applicable'`
 
 Allowed values:
 
-- `not_applicable`
-- `pending`
-- `partial`
-- `synced`
-- `failed`
+- `not_applicable`: the submission has no push-enabled file fields
+- `pending`: at least one push-enabled file is not yet synced
+- `partial`: some push-enabled files are synced, at least one is pending or failed
+- `synced`: all push-enabled files have successfully mirrored
+- `failed`: at least one push-enabled file reached `permanent_failed`
 
-This is derived from the related `intake_submission_files` rows and updated by the worker.
+This aggregate counts only files where the source field has `push_to_smartsheet = true`. Blob-only files do not affect it.
+
+The worker updates this aggregate after each sync attempt.
 
 ---
 
 ## 6. File Size and Upload Rules
 
-### 6.1 Native-attachment mode changes the cap
+### 6.1 Per-field cap enforcement
 
-When `file_storage_mode = 'smartsheet_native'`:
+The upload-token route must check `push_to_smartsheet` on the field before issuing a token.
 
-- upload max size becomes `30 MB`
-- upload-token route must enforce `30 MB`
-- public UI must display `30 MB` instead of `100 MB`
+- field has `push_to_smartsheet = false`: enforce `100 MB` cap
+- field has `push_to_smartsheet = true`: enforce `30 MB` cap
+
+The public form UI must display the correct cap per field based on the field's push setting.
 
 ### 6.2 PDF only remains
 
-Even in native-attachment mode:
+For all file fields, regardless of push setting:
 
 - PDF only
 - no image uploads
@@ -228,28 +253,30 @@ Even in native-attachment mode:
 
 ### 6.3 Multi-file support still applies
 
-If a file field allows multiple PDFs:
+If a push-enabled file field allows multiple PDFs:
 
 - each file becomes its own `intake_submission_files` row
 - each file syncs independently
-- per-file success/failure must not block unrelated files from syncing
+- per-file success or failure does not block unrelated files from syncing
 
 ---
 
 ## 7. Processing Flow
 
-## 7.1 Happy path
+### 7.1 Happy path
 
-1. Browser uploads PDFs to private Blob using scoped upload tokens.
+1. Browser uploads PDFs to private Blob using scoped upload tokens (cap determined by field push setting).
 2. Public submit route validates metadata and creates the Smartsheet row.
-3. `intake_submission_files` records are inserted with `attachment_sync_status = 'pending'`.
-4. `intake_submissions.attachment_sync_status` becomes `pending`.
-5. Background worker selects pending files whose row already exists.
-6. Worker downloads or streams the staged Blob object.
-7. Worker uploads the file to Smartsheet `POST /sheets/{sheetId}/rows/{rowId}/attachments` as a `FILE` attachment.
-8. Worker stores `smartsheet_attachment_id`, marks the file `synced`, and sets `blob_delete_after`.
-9. When all files for the submission are synced, the parent submission aggregate becomes `synced`.
-10. Cleanup job deletes the staged Blob after the retention window.
+3. `intake_submission_files` records are inserted. Push-enabled files get `attachment_sync_status = 'pending'`; blob-only files get `not_applicable`.
+4. If any push-enabled files exist, `intake_submissions.attachment_sync_status` becomes `pending`.
+5. Background worker selects eligible pending files (see Section 8.2).
+6. Worker claims each file atomically (see Section 8.3).
+7. Worker checks whether the file is already attached to the Smartsheet row (see Section 9.3).
+8. Worker downloads or streams the staged Blob object.
+9. Worker uploads the file to Smartsheet `POST /sheets/{sheetId}/rows/{rowId}/attachments` as a `FILE` attachment.
+10. Worker writes `smartsheet_attachment_id`, marks the file `synced`, and sets `blob_delete_after = now() + 24 hours`.
+11. Worker updates the parent `intake_submissions.attachment_sync_status` aggregate.
+12. Cleanup job deletes the staged Blob after the retention window.
 
 ### 7.2 Do not block public submit on Smartsheet attachment sync
 
@@ -258,7 +285,7 @@ The public route must return after row creation and DB persistence.
 Do not:
 
 - proxy file bytes into Smartsheet from the public request
-- make submit latency depend on attachment count
+- make submit latency depend on attachment count or push settings
 - risk submission timeouts because of Smartsheet attachment rate limits
 
 ---
@@ -280,51 +307,72 @@ Invocation:
 - Vercel cron every `1 minute`
 - optional admin manual retry action may invoke the same internal sync path
 
-### 8.2 Batch size
+### 8.2 File selection query
 
-Process a small bounded batch each run, for example:
+Each worker run selects eligible files using this predicate:
 
-- max `5` files per run per Smartsheet connection
+- `attachment_sync_status IN ('pending', 'retryable_failed')`
+- `next_sync_attempt_at IS NULL OR next_sync_attempt_at <= now()`
+- grouped by Smartsheet connection token
+- limited to `5` files per connection per run
 
-Reason:
+The `next_sync_attempt_at` filter is mandatory. Without it, the worker ignores the backoff schedule and hammers Smartsheet on every cron tick.
+
+Reason for the per-connection batch cap:
 
 - Smartsheet attach-file writes are capped at `30 requests/minute/token`
-- the app may have multiple cycles sharing one connection/token
+- multiple cycles may share one connection/token across different programs
 
-### 8.3 Locking model
+### 8.3 Atomic locking
 
-Before syncing a file:
+The worker must claim a file atomically before processing it.
 
-- update `attachment_sync_status` from `pending` or `retryable_failed` to `syncing`
-- set `last_sync_attempt_at = now()`
-- increment `sync_attempt_count`
+Required implementation:
 
-Only one worker may own a file row at a time.
+- use a single `UPDATE intake_submission_files SET attachment_sync_status = 'syncing', last_sync_attempt_at = now(), sync_attempt_count = sync_attempt_count + 1 WHERE id = $id AND attachment_sync_status IN ('pending', 'retryable_failed') RETURNING *`
+- if the update returns zero rows, another worker has already claimed this file; skip it
+
+Do not implement this as a read followed by a separate update. A read-then-update creates a race window where concurrent worker invocations both claim and process the same file, resulting in duplicate Smartsheet attachments.
+
+#### Stale `syncing` recovery
+
+If a worker crashes or times out after setting status to `syncing` but before completing, the file row stays in `syncing` indefinitely and is never retried.
+
+Recovery rule:
+
+- at the start of each worker run, before selecting new files, update any rows where `attachment_sync_status = 'syncing' AND last_sync_attempt_at < now() - interval '10 minutes'` back to `retryable_failed`
+
+This ensures stale claims are released and the file re-enters the retry queue on the next run.
 
 ### 8.4 Retry policy
 
-Retryable failures:
+**Retryable failures:**
 
 - Smartsheet `429`
 - Smartsheet transient `5xx`
-- network timeouts fetching Blob
-- network timeouts posting multipart request to Smartsheet
+- network timeout fetching Blob
+- network timeout posting multipart request to Smartsheet
 
-Permanent failures:
+**Permanent failures:**
 
-- staged Blob missing
-- file exceeds Smartsheet size limit
-- row ID missing
-- sheet/connection credentials missing
-- non-retryable Smartsheet `4xx`
+- staged Blob missing or expired
+- file exceeds Smartsheet `30 MB` size limit
+- Smartsheet row ID missing
+- sheet or connection credentials missing or revoked
+- non-retryable Smartsheet `4xx` (excluding `429`)
 
-Backoff:
+**Backoff schedule:**
 
-- attempt 1: immediate or next cron
-- attempt 2: +5 minutes
-- attempt 3: +30 minutes
-- attempt 4: +2 hours
-- after max attempts: `permanent_failed`
+- attempt 1: immediate (next cron run)
+- attempt 2: `next_sync_attempt_at = now() + 5 minutes`
+- attempt 3: `next_sync_attempt_at = now() + 30 minutes`
+- attempt 4: `next_sync_attempt_at = now() + 2 hours`
+
+**Maximum attempts:** 4
+
+After the fourth attempt fails with a retryable error, set `attachment_sync_status = 'permanent_failed'`. Do not continue retrying.
+
+On any permanent failure, set `attachment_sync_status = 'permanent_failed'` immediately regardless of attempt count.
 
 ---
 
@@ -346,47 +394,59 @@ Behavior:
 
 Existing `getRowAttachments(...)` remains the read path for synced files.
 
-### 9.3 Duplicate prevention
+### 9.3 Duplicate attachment prevention
 
 Do not rely only on filename uniqueness.
 
-Primary duplicate prevention:
+**Primary prevention (required):**
 
 - one `intake_submission_files` row per staged Blob pathname
-- if `smartsheet_attachment_id` already exists for that file row, never attach again
+- if `smartsheet_attachment_id` already exists for that file row, skip the Smartsheet attach call entirely and treat the file as already synced
 
-Optional safety:
+**Crash-recovery guard (required):**
 
-- if the worker restarts after successful Smartsheet attach but before DB update, admin repair may require checking current row attachments by filename and size before retrying
+A worker may successfully post a file to Smartsheet but crash before writing `smartsheet_attachment_id` back to the DB. On the next retry, the DB row shows no `smartsheet_attachment_id`, so the primary check does not fire.
+
+Before posting to Smartsheet on any retry attempt (i.e., `sync_attempt_count > 1`), the worker must call `getRowAttachments(...)` and check whether an attachment with a matching filename and file size already exists on the row. If a match is found, write the existing `attachmentId` to `smartsheet_attachment_id`, mark the file `synced`, and skip the upload.
+
+This guard is required, not optional. Without it, a crash between Smartsheet success and DB update results in a permanent duplicate attachment on the Smartsheet row.
 
 ---
 
 ## 10. Attachment API Behavior
 
-### 10.1 Reviewer API
+### 10.1 Signed URL rule for Blob fallback entries
+
+When returning a staged Blob fallback entry for a file that has not yet synced, the API must generate a fresh signed URL at read time.
+
+Do not store and return a static Blob URL. Static URLs expire. A file in `retryable_failed` with a 2-hour backoff will still be referenced in admin and reviewer UIs during that window, and an expired URL produces a broken link.
+
+### 10.2 Reviewer API
 
 `/api/reviewer/cycles/[cycleId]/rows/[rowId]/attachments`
 
 Return:
 
-- Smartsheet attachments
-- staged Blob fallback entries only for file rows whose sync status is `pending`, `syncing`, or `retryable_failed`
+- Smartsheet `FILE` attachments
+- staged Blob fallback entries (with fresh signed URLs) for file rows whose sync status is `pending`, `syncing`, or `retryable_failed`
 
-Do not return duplicate staged entries once a synced Smartsheet attachment is known for that file row.
+Do not return duplicate staged entries once a synced Smartsheet attachment is confirmed for that file row.
 
-### 10.2 Admin preview API
+Blob-only files (`not_applicable`) are returned as ordinary attachments with no sync metadata exposed.
+
+### 10.3 Admin preview API
 
 `/api/admin/cycles/[id]/preview-rows/[rowId]/attachments`
 
 Return:
 
-- Smartsheet attachments
-- staged Blob fallback entries for pending/retrying files
-- failed file entries with sync status metadata so admins can repair the issue
+- Smartsheet `FILE` attachments
+- staged Blob fallback entries (with fresh signed URLs) for pending and retrying files
+- failed file entries with sync status metadata so admins can see and repair the issue
 
-### 10.3 Normalized payload
+### 10.4 Normalized payload shape
 
-Extend the attachment payload shape to support state:
+Extend the attachment payload shape:
 
 - `id`
 - `name`
@@ -397,29 +457,39 @@ Extend the attachment payload shape to support state:
 
 Possible `source` values:
 
-- `smartsheet`
-- `intake_upload_pending`
-- `intake_upload_failed`
+- `smartsheet`: attachment confirmed in Smartsheet
+- `intake_upload_pending`: file is queued or in-flight; Blob URL is a temporary fallback
+- `intake_upload_failed`: file reached `permanent_failed`; Blob URL is the only remaining copy
+- `intake_upload_blob_only`: file is from a non-sync field; Blob is the permanent store
+
+`pending` and `syncing` both map to `intake_upload_pending`. The internal distinction is not exposed to reviewer or admin UIs.
 
 ---
 
 ## 11. Admin UX Changes
 
-### 11.1 Intake builder
+### 11.1 Intake builder — field-level toggle
 
-When `file_storage_mode = 'smartsheet_native'`:
+When an admin adds or edits an attachment field in the intake builder, the field properties panel must include:
 
-- show a clear note that files are mirrored into Smartsheet native attachments
-- show `30 MB` max file size
-- warn that larger files are not supported in this mode
+- a checkbox labeled `Push uploaded files to Smartsheet as native attachments`
+- when checked, a note reading: `Files from this field will be mirrored to Smartsheet after submission. Maximum file size is 30 MB.`
+- when checked, the displayed file size limit updates from `100 MB` to `30 MB`
+- when unchecked, the field behaves as today; files stay in Blob
+
+This setting maps to `field_configs.push_to_smartsheet`.
+
+The checkbox should not appear on non-file field types.
 
 ### 11.2 Submission audit table
 
-Admin submissions UI must show:
+Admin submissions UI must show when any push-enabled files are present:
 
 - row creation status
 - aggregate attachment sync status
-- count of pending/synced/failed files
+- count of pending / synced / failed files (push-enabled only)
+
+Blob-only file counts are shown separately and do not affect the sync aggregate.
 
 ### 11.3 Admin recovery actions
 
@@ -432,44 +502,47 @@ Add:
 Rules:
 
 - retry must never create a second Smartsheet row
-- retry only re-processes file rows whose sync is not already `synced`
+- retry resets `attachment_sync_status` to `pending` and clears `next_sync_attempt_at` only for file rows where `smartsheet_attachment_id IS NULL` and status is `retryable_failed` or `permanent_failed`
+- retry must not re-process a file that is already `synced`
 
 ---
 
 ## 12. Failure Handling
 
-### 12.1 Row exists but attachment sync is pending
+### 12.1 Row exists, attachment sync is pending
 
 Submission remains valid.
 
 Behavior:
 
-- reviewer/admin may still see staged Blob fallback
-- aggregate status stays `pending` until files finish syncing
+- reviewer and admin may see staged Blob fallback entries
+- aggregate status stays `pending` until all push-enabled files complete
 
-### 12.2 Row exists but one attachment permanently fails
+### 12.2 Row exists, one attachment permanently failed
 
 Behavior:
 
-- keep submission row
+- keep the submission row
 - mark the file `permanent_failed`
-- set parent aggregate to `partial` or `failed`
-- expose admin retry/repair controls
+- update parent aggregate to `partial` (if other push-enabled files synced) or `failed` (if none synced)
+- expose admin retry and repair controls
 
-### 12.3 Oversize file in native mode
+### 12.3 Oversize file on a push-enabled field
 
 Behavior:
 
-- reject upload-token request before upload
+- reject upload-token request before the browser upload begins
 - return a clear `400`
-- do not allow a `>30 MB` file into a native-attachment flow
+- do not allow a file larger than `30 MB` into the sync pipeline
 
 ### 12.4 Staged Blob missing during sync
 
 Behavior:
 
-- mark file `permanent_failed`
+- mark file `permanent_failed` immediately regardless of attempt count
+- write the error to `sync_error_json`
 - require admin intervention
+- do not retry; the source object is gone
 
 ---
 
@@ -479,38 +552,43 @@ Behavior:
 
 Continue deleting staged files that never reached a completed submission after `24 hours`.
 
-### 13.2 Synced cleanup
+This applies to pre-submission orphans only. It must not touch file rows that belong to a completed `intake_submissions` record, regardless of sync status.
 
-If:
+### 13.2 Synced file cleanup
+
+The cleanup job may delete the staged Blob and set `blob_deleted_at` only when all four conditions are true:
 
 - `attachment_sync_status = 'synced'`
 - `smartsheet_attachment_id IS NOT NULL`
 - `blob_delete_after <= now()`
 - `blob_deleted_at IS NULL`
 
-then the cleanup job may delete the staged Blob and mark `blob_deleted_at`.
+The `smartsheet_attachment_id IS NOT NULL` check is mandatory. Omitting it risks deleting a staged Blob for a file that appears synced by status but has no confirmed Smartsheet record.
 
-### 13.3 Failed files
+Files with `attachment_sync_status = 'not_applicable'` are never touched by sync cleanup.
+
+### 13.3 Failed file cleanup
 
 Do not auto-delete permanently failed staged files immediately.
 
 Final decision:
 
-- retain failed staged files for `7 days`
-- then allow cleanup if still unresolved
+- retain `permanent_failed` staged files for `7 days` after `last_sync_attempt_at`
+- after 7 days, allow cleanup if status is still `permanent_failed` and `blob_deleted_at IS NULL`
 
 ---
 
 ## 14. Recommended Build Order
 
-1. Add migration `006_smartsheet_attachment_sync.sql`
-2. Add `file_storage_mode` form setting and `30 MB` validation when native mode is enabled
-3. Add `attachFileToRow(...)` helper in `src/lib/smartsheet.ts`
-4. Add sync-status fields and aggregate update logic in `src/lib/intake.ts`
-5. Add cron worker route for attachment sync
-6. Update reviewer/admin attachment APIs to prefer synced Smartsheet attachments
-7. Update admin submissions UI with attachment-sync visibility and retry actions
-8. Update cleanup job to purge successfully mirrored staged Blobs after retention
+1. Add migration (assign the correct sequential number at build time)
+2. Add `push_to_smartsheet` column to `field_configs` with `DEFAULT FALSE`
+3. Add the push toggle checkbox to the attachment field properties panel in the intake builder; enforce `30 MB` cap on upload-token issuance when enabled
+4. Add `attachFileToRow(...)` helper in `src/lib/smartsheet.ts`
+5. Add sync-status fields and aggregate update logic in `src/lib/intake.ts`
+6. Add cron worker route with atomic claiming, stale-syncing recovery, backoff, and duplicate guard; query only files from push-enabled fields
+7. Update reviewer and admin attachment APIs to prefer synced Smartsheet entries, return fresh signed URLs for fallbacks, and surface `not_applicable` files correctly
+8. Update admin submissions UI with sync visibility and retry actions scoped to push-enabled files
+9. Update cleanup job to handle synced Blob deletion and failed file retention, skipping `not_applicable` rows
 
 ---
 
@@ -520,15 +598,17 @@ This should be built as a separate post-v1 project, not folded into the current 
 
 Reason:
 
-- it changes the effective upload limit from `100 MB` to `30 MB`
-- it adds a second async state machine after row creation
-- it introduces Smartsheet attachment rate-limit pressure
-- it requires admin repair tooling before it is safe in production
+- the per-field toggle requires intake builder changes and a new field property
+- the async sync state machine adds complexity after row creation
+- Smartsheet attachment rate-limit pressure requires careful batching
+- admin repair tooling must exist before this is safe in production
+
+The zip export feature is the primary long-term archiving path and remains independent of this feature. Programs that need a guaranteed complete archive of all files should use zip export regardless of whether they enable Smartsheet native sync.
 
 Recommended release label:
 
-- `v1.5` if the scope is limited to PDF mirroring and admin recovery
-- `v2` if the team wants stronger queueing, richer status dashboards, and stricter Smartsheet-only attachment semantics
+- `v1.5` if the scope is limited to the per-field toggle, PDF mirroring, and admin recovery
+- `v2` if the team wants stronger queueing, richer status dashboards, and stricter Smartsheet-only semantics
 
 ---
 

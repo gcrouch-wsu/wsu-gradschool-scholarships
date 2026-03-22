@@ -3,6 +3,11 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
+import {
+  buildIntakeLayoutFromFields,
+  createEmptyLayout,
+  readLayoutJsonOrFallback,
+} from "@/lib/layout";
 import { sanitizeRichTextHtml } from "@/lib/rich-text";
 import {
   formatIntakeSchemaUnavailableMessage,
@@ -49,7 +54,21 @@ export async function GET(
     [form.id]
   );
 
-  return NextResponse.json({ form, fields });
+  return NextResponse.json({
+    form: {
+      ...form,
+      layout_json: readLayoutJsonOrFallback(
+        form.layout_json,
+        buildIntakeLayoutFromFields(fields),
+        {
+          knownFieldKeys: fields.map((field: { field_key: string }) => field.field_key),
+          requireAllPlaced: false,
+          allowedSectionKeys: ["main"],
+        }
+      ),
+    },
+    fields,
+  });
 }
 
 export async function POST(
@@ -84,8 +103,12 @@ export async function POST(
   );
 
   const { rows: newForm } = await query<{ id: string }>(
-    "INSERT INTO intake_forms (cycle_id, title, status) VALUES ($1, $2, 'draft') RETURNING id",
-    [cycleId, `Intake Form - ${cycleRows[0]?.cycle_label || cycleId}`]
+    "INSERT INTO intake_forms (cycle_id, title, status, layout_json) VALUES ($1, $2, 'draft', $3) RETURNING id",
+    [
+      cycleId,
+      `Intake Form - ${cycleRows[0]?.cycle_label || cycleId}`,
+      JSON.stringify(createEmptyLayout()),
+    ]
   );
 
   await logAudit({

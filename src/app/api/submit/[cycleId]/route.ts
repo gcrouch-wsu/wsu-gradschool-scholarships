@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { checkRateLimit, processSubmission } from "@/lib/intake";
 import {
+  buildIntakeLayoutFromFields,
+  readLayoutJsonOrFallback,
+} from "@/lib/layout";
+import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
@@ -55,6 +59,15 @@ export async function GET(
   }
 
   const snapshot = form.snapshot_json;
+  const layoutJson = readLayoutJsonOrFallback(
+    snapshot.layout_json,
+    buildIntakeLayoutFromFields(snapshot.fields),
+    {
+      knownFieldKeys: snapshot.fields.map((field: { field_key: string }) => field.field_key),
+      requireAllPlaced: false,
+      allowedSectionKeys: ["main"],
+    }
+  );
 
   return NextResponse.json({
     cycleId,
@@ -64,6 +77,7 @@ export async function GET(
     opensAt: snapshot.opens_at,
     closesAt: snapshot.closes_at,
     status,
+    layoutJson,
     fields: snapshot.fields.sort((a: any, b: any) => a.sort_order - b.sort_order),
     fileLimits: {
       maxSizeBytes: 104857600, // 100 MB

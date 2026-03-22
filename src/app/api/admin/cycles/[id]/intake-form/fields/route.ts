@@ -8,6 +8,10 @@ import {
   INTAKE_ALLOWED_FIELD_TYPES,
 } from "@/lib/intake";
 import {
+  buildIntakeLayoutFromFields,
+  validateLayoutJson,
+} from "@/lib/layout";
+import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
@@ -109,6 +113,21 @@ export async function PUT(
     keys.add(f.field_key);
   }
 
+  const layoutResult = validateLayoutJson(
+    buildIntakeLayoutFromFields(fields),
+    {
+      knownFieldKeys: fields.map((field: { field_key: string }) => field.field_key),
+      requireAllPlaced: false,
+      allowedSectionKeys: ["main"],
+    }
+  );
+  if (!layoutResult.ok) {
+    return NextResponse.json(
+      { error: `Generated intake layout is invalid: ${layoutResult.error}` },
+      { status: 400 }
+    );
+  }
+
   await withTransaction(async (tx) => {
     // Clear existing
     await tx("DELETE FROM intake_form_fields WHERE intake_form_id = $1", [form.id]);
@@ -128,6 +147,11 @@ export async function PUT(
         ]
       );
     }
+
+    await tx(
+      "UPDATE intake_forms SET layout_json = $2, updated_at = now() WHERE id = $1",
+      [form.id, JSON.stringify(layoutResult.normalized)]
+    );
     
     // Reset status to draft if it was invalid
     await tx(

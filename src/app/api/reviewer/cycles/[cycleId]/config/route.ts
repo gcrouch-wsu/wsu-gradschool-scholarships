@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
+import {
+  buildReviewerLayoutFromFields,
+  readLayoutJsonOrFallback,
+} from "@/lib/layout";
 import { getReviewerAttachmentSchemaStatus } from "@/lib/reviewer-attachments";
 
 export async function GET(
@@ -58,8 +62,8 @@ export async function GET(
     [cycleId, membership[0]!.role_id]
   );
 
-  const { rows: viewConfigs } = await query<{ view_type: string; settings_json: unknown }>(
-    "SELECT view_type, settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
+  const { rows: viewConfigs } = await query<{ view_type: string; settings_json: unknown; layout_json: unknown }>(
+    "SELECT view_type, settings_json, layout_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
     [cycleId]
   );
   const { rows: viewSections } = await query<{
@@ -152,6 +156,25 @@ export async function GET(
   const fieldsForReview = blindReview
     ? validFields.filter((f) => !hiddenFieldKeys.has(f.field_key))
     : validFields;
+  const layoutJson = readLayoutJsonOrFallback(
+    viewConfigs[0]?.layout_json,
+    buildReviewerLayoutFromFields(
+      validFields.map((field) => ({
+        fieldKey: field.field_key,
+        sectionKey: field.section_key,
+        sortOrder: field.sort_order,
+        pinned: (viewSettings?.pinnedFieldKeys ?? []).includes(field.field_key),
+      })),
+      viewSections.length > 0 ? viewSections : [{ section_key: "main", label: "Review", sort_order: 0 }],
+      viewSettings?.pinnedFieldKeys ?? []
+    ),
+    {
+      knownFieldKeys: validFields.map((field) => field.field_key),
+      pinnedFieldKeys: viewSettings?.pinnedFieldKeys ?? [],
+      requireAllPlaced: false,
+      allowedSectionKeys: (viewSections.length > 0 ? viewSections : [{ section_key: "main", label: "Review", sort_order: 0 }]).map((section) => section.section_key),
+    }
+  );
 
   return NextResponse.json({
     fieldConfigs: fieldsForReview,
@@ -160,6 +183,7 @@ export async function GET(
     showAttachments,
     canUploadAttachments,
     viewType: viewConfigs[0]?.view_type ?? "tabbed",
+    layoutJson,
     viewSections: viewSections.map((s) => ({
       section_key: s.section_key,
       label: s.label,
