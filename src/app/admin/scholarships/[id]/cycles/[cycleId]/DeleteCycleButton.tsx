@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminDangerPanelClass,
+  adminDestructiveButtonClass,
+  adminDestructiveButtonSmClass,
+  adminSecondaryButtonClass,
+  adminSecondaryButtonSmClass,
+} from "@/components/admin/actionStyles";
 
 export function DeleteCycleButton({
   cycleId,
@@ -42,7 +49,12 @@ export function DeleteCycleButton({
 
   if (confirming) {
     return (
-      <div className={compact ? "flex items-center gap-2" : "mt-6 rounded-lg border border-red-200 bg-red-50 p-4"}>
+      <div className={compact ? `${adminDangerPanelClass} flex flex-wrap items-center gap-2 p-3` : `mt-6 ${adminDangerPanelClass}`}>
+        {compact && (
+          <span className="text-xs font-medium text-red-800">
+            Delete &quot;{cycleLabel}&quot;?
+          </span>
+        )}
         {!compact && (
           <p className="mb-2 text-sm font-medium text-red-900">
             Delete &quot;{cycleLabel}&quot;? This cannot be undone. All field config, roles, and assignments will be removed.
@@ -53,7 +65,7 @@ export function DeleteCycleButton({
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className={compact ? adminDestructiveButtonSmClass : adminDestructiveButtonClass}
           >
             {deleting ? "Deleting…" : compact ? "Delete" : "Delete cycle"}
           </button>
@@ -61,12 +73,12 @@ export function DeleteCycleButton({
             type="button"
             onClick={() => { setConfirming(false); setError(""); }}
             disabled={deleting}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            className={compact ? adminSecondaryButtonSmClass : adminSecondaryButtonClass}
           >
             Cancel
           </button>
         </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {error && <p className={compact ? "basis-full text-sm text-red-600" : "mt-2 text-sm text-red-600"}>{error}</p>}
       </div>
     );
   }
@@ -75,9 +87,9 @@ export function DeleteCycleButton({
     <button
       type="button"
       onClick={() => setConfirming(true)}
-      className="text-sm text-red-600 hover:underline"
+      className={adminDestructiveButtonSmClass}
     >
-      Delete cycle
+      {compact ? "Delete" : "Delete cycle"}
     </button>
   );
 }

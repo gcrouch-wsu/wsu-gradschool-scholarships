@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { adminPrimaryButtonClass } from "@/components/admin/actionStyles";
 
 interface Template {
   id: string;
@@ -132,7 +133,7 @@ export function AddCycleForm({ programId }: { programId: string }) {
       <button
         type="submit"
         disabled={loading}
-        className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+        className={adminPrimaryButtonClass}
       >
         {loading ? "Adding…" : "Add cycle"}
       </button>

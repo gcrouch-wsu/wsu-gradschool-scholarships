@@ -57,23 +57,25 @@ export default async function ProgramDetailPage({
           ← Scholarships
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-zinc-900">{program.name}</h1>
-            <p className="text-sm text-zinc-400" title="The URL identifier — cannot be changed after creation">
-              {program.slug} <span className="text-[10px]">(permanent)</span>
+            <p className="mt-1 inline-flex items-center rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-zinc-500" title="The URL identifier — cannot be changed after creation">
+              {program.slug} <span className="ml-1 text-[10px]">(permanent)</span>
             </p>
             {canManage && (
-              <RenameProgramForm
-                programId={id}
-                initialName={program.name}
-                initialDescription={program.description}
-              />
+              <div className="mt-3">
+                <RenameProgramForm
+                  programId={id}
+                  initialName={program.name}
+                  initialDescription={program.description}
+                />
+              </div>
             )}
           </div>
           <DeleteProgramButton programId={id} programName={program.name} />
         </div>
         {program.description && (
-          <p className="mt-1 text-zinc-600">{program.description}</p>
+          <p className="mt-3 max-w-3xl text-zinc-600">{program.description}</p>
         )}
       </div>
 
@@ -86,32 +88,36 @@ export default async function ProgramDetailPage({
       <div className="mb-6">
         <h2 className="mb-3 text-lg font-medium text-zinc-900">Cycles</h2>
         {user.is_platform_admin && <AddCycleForm programId={id} />}
-        <div className="mt-4 space-y-2">
+        <div className="mt-4 space-y-3">
           {cycles.length === 0 ? (
             <p className="text-sm text-zinc-500">No cycles yet.</p>
           ) : (
             cycles.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between rounded border border-zinc-200 bg-white px-4 py-3"
+                className="grid gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
               >
-                <div>
-                  <Link
-                    href={`/admin/scholarships/${id}/cycles/${c.id}`}
-                    className="font-medium text-zinc-900 hover:underline"
-                  >
-                    {c.cycle_label}
-                  </Link>
-                  <span className="ml-2 text-sm text-zinc-500">({c.cycle_key})</span>
-                  {c.sheet_name && (
-                    <span className="ml-2 text-sm text-zinc-500">
-                      Sheet: {c.sheet_name}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/admin/scholarships/${id}/cycles/${c.id}`}
+                      className="font-medium text-zinc-900 hover:underline"
+                    >
+                      {c.cycle_label}
+                    </Link>
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                      {c.cycle_key}
                     </span>
+                  </div>
+                  {c.sheet_name && (
+                    <p className="mt-1 truncate text-sm text-zinc-500">
+                      Sheet: {c.sheet_name}
+                    </p>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 md:justify-end">
                   <span
-                    className={`rounded px-2 py-1 text-xs font-medium ${
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
                       c.status === "active"
                         ? "bg-green-100 text-green-800"
                         : c.status === "draft"

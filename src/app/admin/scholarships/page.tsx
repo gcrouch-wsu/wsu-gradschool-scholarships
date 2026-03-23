@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { getAdminProgramIds } from "@/lib/admin";
 import { query } from "@/lib/db";
+import { adminPrimaryButtonClass } from "@/components/admin/actionStyles";
 
 export default async function ScholarshipsPage() {
   const user = await getSessionUser();
@@ -39,7 +40,7 @@ export default async function ScholarshipsPage() {
         {isPlatformAdmin && (
           <Link
             href="/admin/scholarships/new"
-            className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
+            className={adminPrimaryButtonClass}
           >
             Add program
           </Link>
@@ -53,23 +54,25 @@ export default async function ScholarshipsPage() {
           programs.map((p) => (
             <div
               key={p.id}
-              className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm"
+              className="rounded-xl border border-zinc-200 bg-white px-5 py-4 shadow-sm"
             >
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0">
                   <Link
                     href={`/admin/scholarships/${p.id}`}
                     className="font-medium text-zinc-900 hover:underline"
                   >
                     {p.name}
                   </Link>
-                  <p className="text-sm text-zinc-500">{p.slug}</p>
+                  <p className="mt-1 inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    {p.slug}
+                  </p>
                   {p.description && (
-                    <p className="mt-1 text-sm text-zinc-600">{p.description}</p>
+                    <p className="mt-2 max-w-3xl text-sm text-zinc-600">{p.description}</p>
                   )}
                 </div>
                 <span
-                  className={`rounded px-2 py-1 text-xs font-medium ${
+                  className={`inline-flex h-fit items-center rounded-full px-3 py-1 text-xs font-medium ${
                     p.status === "active"
                       ? "bg-green-100 text-green-800"
                       : "bg-zinc-100 text-zinc-600"

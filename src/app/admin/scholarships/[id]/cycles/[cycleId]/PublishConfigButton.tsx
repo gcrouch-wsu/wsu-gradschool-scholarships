@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminPrimaryButtonClass,
+  adminPrimaryButtonSmClass,
+  adminSecondaryButtonSmClass,
+} from "@/components/admin/actionStyles";
 
 export function PublishConfigButton({
   cycleId,
@@ -87,7 +92,7 @@ export function PublishConfigButton({
                 type="button"
                 onClick={handlePublish}
                 disabled={loading}
-                className="rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+                className={adminPrimaryButtonSmClass}
                 title="Publish the latest reviewer form changes."
               >
                 {loading ? "Publishing…" : "Publish updates"}
@@ -98,7 +103,7 @@ export function PublishConfigButton({
             type="button"
             onClick={handleUnpublish}
             disabled={unpublishLoading}
-            className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50"
+            className={adminSecondaryButtonSmClass}
             title="Remove published config. Reviewers will see nothing until you publish again."
           >
             {unpublishLoading ? "…" : "Unpublish"}
@@ -109,7 +114,7 @@ export function PublishConfigButton({
           type="button"
           onClick={handlePublish}
           disabled={loading}
-          className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+          className={adminPrimaryButtonClass}
           title="Publish makes this config live for reviewers."
         >
           {loading ? "Publishing…" : "Publish to reviewers"}

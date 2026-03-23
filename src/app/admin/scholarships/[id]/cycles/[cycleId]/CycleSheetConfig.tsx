@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+} from "@/components/admin/actionStyles";
 
 interface CycleSheetConfigProps {
   cycleId: string;
@@ -102,7 +106,7 @@ export function CycleSheetConfig({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-zinc-200 bg-white p-4">
+    <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap gap-4">
         <div>
           <label className="block text-xs font-medium text-zinc-600">
@@ -161,7 +165,7 @@ export function CycleSheetConfig({
           type="button"
           onClick={handleSave}
           disabled={loading}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50"
+          className={adminSecondaryButtonClass}
         >
           {loading ? "Saving…" : "Save"}
         </button>
@@ -170,7 +174,7 @@ export function CycleSheetConfig({
           onClick={handleImportSchema}
           disabled={syncing || !connId || !sheetIdInput}
           title={!connId || !sheetIdInput ? "Select connection and enter Sheet ID first" : "Sync columns from Smartsheet"}
-          className="rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+          className={adminPrimaryButtonClass}
         >
           {syncing ? "Syncing…" : "Sync columns from Smartsheet"}
         </button>

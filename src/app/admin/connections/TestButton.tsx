@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { adminSecondaryButtonSmClass } from "@/components/admin/actionStyles";
 
 export function TestButton({ connectionId }: { connectionId: string }) {
   const [status, setStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
@@ -29,10 +30,10 @@ export function TestButton({ connectionId }: { connectionId: string }) {
   return (
     <div className="flex items-center gap-2">
       {status === "ok" && (
-        <span className="text-sm text-green-600">OK</span>
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">OK</span>
       )}
       {status === "fail" && (
-        <span className="text-sm text-red-600" title={error}>
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700" title={error}>
           Failed
         </span>
       )}
@@ -40,7 +41,7 @@ export function TestButton({ connectionId }: { connectionId: string }) {
         type="button"
         onClick={handleTest}
         disabled={status === "testing"}
-        className="rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-50 disabled:opacity-50"
+        className={adminSecondaryButtonSmClass}
       >
         {status === "testing" ? "Testing…" : "Test"}
       </button>

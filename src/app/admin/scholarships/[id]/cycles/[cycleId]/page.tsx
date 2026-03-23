@@ -239,19 +239,11 @@ export default async function CycleDetailPage({
             cycleId={cycleId}
             allowExternalReviewers={cycle.allow_external_reviewers}
           />
-          <details className="rounded border border-zinc-200 bg-white">
-            <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50">
-              Rename cycle
-            </summary>
-            <div className="border-t border-zinc-200 p-3">
-              <RenameCycleForm
-                cycleId={cycleId}
-                programId={programId}
-                currentKey={cycle.cycle_key}
-                currentLabel={cycle.cycle_label}
-              />
-            </div>
-          </details>
+          <RenameCycleForm
+            cycleId={cycleId}
+            currentKey={cycle.cycle_key}
+            currentLabel={cycle.cycle_label}
+          />
           <DeleteCycleButton
             cycleId={cycleId}
             programId={programId}
@@ -418,7 +410,7 @@ export default async function CycleDetailPage({
           </div>
         </section>
 
-        <section>
+        <section className="rounded-lg border border-zinc-200 bg-zinc-50/40 p-5">
           <h2 className="mb-3 text-lg font-medium text-zinc-900">
             Assigned reviewers
           </h2>
@@ -429,19 +421,26 @@ export default async function CycleDetailPage({
             existingUserIds={memberships.map((m) => m.user_id)}
           />
           {memberships.length === 0 ? (
-            <p className="mt-2 text-sm text-zinc-500">No reviewers assigned yet.</p>
+            <p className="mt-3 text-sm text-zinc-500">No reviewers assigned yet.</p>
           ) : (
-            <ul className="mt-2 space-y-2">
+            <ul className="mt-4 space-y-3">
               {memberships.map((m) => (
                 <li
                   key={m.user_id}
-                  className="flex items-center justify-between rounded border border-zinc-200 bg-white px-4 py-2"
+                  className="grid gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                 >
-                  <span>
-                    {m.first_name} {m.last_name} ({m.email})
-                  </span>
-                  <span className="text-sm text-zinc-500">{m.role_label}</span>
-                  <RemoveAssignmentButton cycleId={cycleId} userId={m.user_id} />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-zinc-900">
+                      {m.first_name} {m.last_name}
+                    </p>
+                    <p className="truncate text-sm text-zinc-500">{m.email}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 md:justify-end">
+                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
+                      {m.role_label}
+                    </span>
+                    <RemoveAssignmentButton cycleId={cycleId} userId={m.user_id} />
+                  </div>
                 </li>
               ))}
             </ul>

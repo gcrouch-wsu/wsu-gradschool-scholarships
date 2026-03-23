@@ -32,31 +32,33 @@ export default async function UsersPage() {
 
       <CreateUserForm />
 
-      <div className="mt-8 space-y-2">
+      <div className="mt-8 space-y-3">
         {users.map((u) => (
           <div
             key={u.id}
-            className="flex items-center justify-between rounded border border-zinc-200 bg-white px-4 py-3"
+            className="grid gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
           >
-            <div>
-              <span className="font-medium text-zinc-900">
-                {u.first_name} {u.last_name}
-              </span>
-              <span className="ml-2 text-zinc-500">{u.email}</span>
-              {u.is_platform_admin && (
-                <span className="ml-2 rounded bg-zinc-200 px-1.5 py-0.5 text-xs">
-                  Admin
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-zinc-900">
+                  {u.first_name} {u.last_name}
                 </span>
-              )}
-              {u.must_change_password && (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
-                  Must change password
-                </span>
-              )}
+                {u.is_platform_admin && (
+                  <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700">
+                    Admin
+                  </span>
+                )}
+                {u.must_change_password && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    Must change password
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 truncate text-sm text-zinc-500">{u.email}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 md:justify-end">
               <span
-                className={`rounded px-2 py-1 text-xs font-medium ${
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
                   u.status === "active"
                     ? "bg-green-100 text-green-800"
                     : "bg-zinc-100 text-zinc-600"

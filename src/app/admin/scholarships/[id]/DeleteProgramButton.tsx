@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminDangerPanelClass,
+  adminDestructiveButtonClass,
+  adminDestructiveButtonSmClass,
+  adminSecondaryButtonClass,
+} from "@/components/admin/actionStyles";
 
 export function DeleteProgramButton({
   programId,
@@ -38,16 +44,16 @@ export function DeleteProgramButton({
 
   if (confirming) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+      <div className={adminDangerPanelClass}>
         <p className="text-sm font-medium text-red-900">
-          Delete "{programName}"? This removes every cycle, reviewer assignment, and intake form under this scholarship.
+          Delete &quot;{programName}&quot;? This removes every cycle, reviewer assignment, and intake form under this scholarship.
         </p>
         <div className="mt-3 flex gap-2">
           <button
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className={adminDestructiveButtonClass}
           >
             {deleting ? "Deleting..." : "Delete scholarship"}
           </button>
@@ -58,7 +64,7 @@ export function DeleteProgramButton({
               setError("");
             }}
             disabled={deleting}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            className={adminSecondaryButtonClass}
           >
             Cancel
           </button>
@@ -72,7 +78,7 @@ export function DeleteProgramButton({
     <button
       type="button"
       onClick={() => setConfirming(true)}
-      className="text-sm text-red-600 hover:underline"
+      className={adminDestructiveButtonSmClass}
     >
       Delete scholarship
     </button>

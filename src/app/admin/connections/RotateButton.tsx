@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminInlinePanelClass,
+  adminPrimaryButtonSmClass,
+  adminSecondaryButtonSmClass,
+  adminWarningButtonSmClass,
+} from "@/components/admin/actionStyles";
 
 export function RotateButton({
   connectionId,
@@ -45,7 +51,7 @@ export function RotateButton({
   return (
     <div className="flex items-center gap-2">
       {open ? (
-        <div className="flex flex-col gap-2 rounded border border-zinc-200 bg-zinc-50 p-3">
+        <div className={`${adminInlinePanelClass} flex max-w-sm flex-col gap-2`}>
           <p className="text-xs text-zinc-600">
             Enter new Smartsheet API token for {connectionName}. It will be verified before saving.
           </p>
@@ -62,7 +68,7 @@ export function RotateButton({
               type="button"
               onClick={handleRotate}
               disabled={status === "rotating" || !token.trim()}
-              className="rounded-md bg-[var(--wsu-crimson)] px-2 py-1 text-xs text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+              className={adminPrimaryButtonSmClass}
             >
               {status === "rotating" ? "Rotating…" : "Rotate"}
             </button>
@@ -73,7 +79,7 @@ export function RotateButton({
                 setToken("");
                 setError("");
               }}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+              className={adminSecondaryButtonSmClass}
             >
               Cancel
             </button>
@@ -83,7 +89,7 @@ export function RotateButton({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded border border-amber-300 px-3 py-1 text-sm text-amber-800 hover:bg-amber-50"
+          className={adminWarningButtonSmClass}
         >
           Rotate token
         </button>

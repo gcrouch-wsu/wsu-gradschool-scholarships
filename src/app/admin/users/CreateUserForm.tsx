@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { adminPrimaryButtonClass } from "@/components/admin/actionStyles";
 
 export function CreateUserForm() {
   const router = useRouter();
@@ -94,7 +95,7 @@ export function CreateUserForm() {
           onChange={(e) => setEmail(e.target.value)}
           required
           autoComplete="off"
-          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         />
       </div>
       <div>
@@ -109,7 +110,7 @@ export function CreateUserForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm"
+          className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         />
         <p className="mt-1 text-xs text-zinc-500">
           Share manually with the user. At least 8 characters.
@@ -137,7 +138,7 @@ export function CreateUserForm() {
       <button
         type="submit"
         disabled={loading}
-        className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+        className={adminPrimaryButtonClass}
       >
         {loading ? "Creating…" : "Create user"}
       </button>

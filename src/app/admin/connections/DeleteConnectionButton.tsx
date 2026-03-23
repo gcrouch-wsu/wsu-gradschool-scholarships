@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminDangerPanelClass,
+  adminDestructiveButtonSmClass,
+  adminSecondaryButtonSmClass,
+} from "@/components/admin/actionStyles";
 
 export function DeleteConnectionButton({
   connectionId,
@@ -13,8 +18,10 @@ export function DeleteConnectionButton({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleDelete() {
+    setError("");
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/connections/${connectionId}`, {
@@ -22,38 +29,42 @@ export function DeleteConnectionButton({
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error ?? "Delete failed");
+        setError(data.error ?? "Delete failed");
         return;
       }
+      setConfirming(false);
       router.refresh();
     } catch {
-      alert("An error occurred");
+      setError("An error occurred");
     } finally {
       setLoading(false);
-      setConfirming(false);
     }
   }
 
   if (confirming) {
     return (
-      <div className="flex items-center gap-2">
+      <div className={`${adminDangerPanelClass} flex max-w-sm flex-wrap items-center gap-2 p-3`}>
         <span className="text-sm text-amber-700">Delete &quot;{connectionName}&quot;?</span>
         <button
           type="button"
           onClick={handleDelete}
           disabled={loading}
-          className="rounded border border-red-300 bg-red-50 px-2 py-1 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+          className={adminDestructiveButtonSmClass}
         >
           {loading ? "Deleting…" : "Yes, delete"}
         </button>
         <button
           type="button"
-          onClick={() => setConfirming(false)}
+          onClick={() => {
+            setConfirming(false);
+            setError("");
+          }}
           disabled={loading}
-          className="rounded border border-zinc-300 px-2 py-1 text-sm hover:bg-zinc-50 disabled:opacity-50"
+          className={adminSecondaryButtonSmClass}
         >
           Cancel
         </button>
+        {error && <span className="basis-full text-xs text-red-700">{error}</span>}
       </div>
     );
   }
@@ -61,8 +72,11 @@ export function DeleteConnectionButton({
   return (
     <button
       type="button"
-      onClick={() => setConfirming(true)}
-      className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+      onClick={() => {
+        setError("");
+        setConfirming(true);
+      }}
+      className={adminDestructiveButtonSmClass}
     >
       Delete
     </button>

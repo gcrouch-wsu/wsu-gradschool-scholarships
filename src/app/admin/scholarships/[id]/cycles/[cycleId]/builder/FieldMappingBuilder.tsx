@@ -198,29 +198,67 @@ function RoleRow({
 
   if (editing) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="grid gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-3 md:grid-cols-[minmax(140px,180px)_minmax(0,1fr)_auto] md:items-center">
+        <div className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-mono font-medium uppercase tracking-wide text-zinc-500">
+          {role.key}
+        </div>
         <input
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setLabel(role.label); setEditing(false); } }}
           autoFocus
-          className="rounded border border-zinc-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
         />
-        <button type="button" onClick={commit} className="text-xs text-green-700 hover:underline">Save</button>
-        <button type="button" onClick={() => { setLabel(role.label); setEditing(false); }} className="text-xs text-zinc-500 hover:underline">Cancel</button>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          <button
+            type="button"
+            onClick={commit}
+            className="inline-flex items-center rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => { setLabel(role.label); setEditing(false); }}
+            className="inline-flex items-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-32 truncate font-mono text-xs text-zinc-400" title={role.key}>{role.key}</span>
-      <span className="text-sm text-zinc-800">{role.label}</span>
-      <button type="button" onClick={() => setEditing(true)} disabled={operatingOn} className="text-xs text-zinc-500 hover:underline disabled:opacity-40">Rename</button>
-      {canDelete && (
-        <button type="button" onClick={onDelete} disabled={operatingOn} className="text-xs text-red-600 hover:underline disabled:opacity-40">Delete</button>
-      )}
+    <div className="grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/70 px-3 py-3 md:grid-cols-[minmax(140px,180px)_minmax(0,1fr)_auto] md:items-center">
+      <span
+        className="inline-flex w-fit items-center rounded-full bg-white px-3 py-1 text-[11px] font-mono font-medium uppercase tracking-wide text-zinc-500 ring-1 ring-inset ring-zinc-200"
+        title={role.key}
+      >
+        {role.key}
+      </span>
+      <span className="text-sm font-medium text-zinc-800">{role.label}</span>
+      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={operatingOn}
+          className="inline-flex items-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+        >
+          Rename
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={operatingOn}
+            className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-40"
+          >
+            Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -232,18 +270,21 @@ function AddRoleForm({ loading, onCreate }: { loading: boolean; onCreate: (label
     if (label.trim()) { onCreate(label.trim()); setLabel(""); }
   }
   return (
-    <form onSubmit={handleSubmit} className="mt-2 flex items-center gap-2">
+    <form
+      onSubmit={handleSubmit}
+      className="mt-3 grid gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+    >
       <input
         type="text"
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         placeholder="New role label…"
-        className="rounded border border-zinc-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
       />
       <button
         type="submit"
         disabled={loading || !label.trim()}
-        className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+        className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
       >
         {loading ? "Adding…" : "+ Add role"}
       </button>
@@ -1019,10 +1060,10 @@ export function FieldMappingBuilder({
   );
 
   const usesSections = ["tabbed", "stacked", "accordion"].includes(viewType);
-  const gridColsBase = "20px minmax(120px,1fr) minmax(70px,1fr) 50px minmax(100px,1fr) minmax(120px,1.5fr)";
+  const gridColsBase = "24px minmax(180px,1.35fr) 136px 72px minmax(160px,0.95fr) minmax(220px,1.25fr)";
   const gridColsFull = usesSections
-    ? `${gridColsBase} minmax(100px,1fr) 60px 70px auto`
-    : `${gridColsBase} 60px 70px auto`;
+    ? `${gridColsBase} 116px 84px 84px 88px`
+    : `${gridColsBase} 84px 84px 88px`;
 
   return (
     <div className="mt-6 space-y-4">
@@ -1131,160 +1172,177 @@ export function FieldMappingBuilder({
           description="Arrange reviewer fields into exact rows inside each section. A row can be one full-width field, two side-by-side fields, or three compact fields."
         />
         <div className="mt-5 border-t border-zinc-100 pt-5">
-        <div className="space-y-2">
-          <div
-            className="grid gap-3 rounded border-b border-zinc-200 pb-2 text-xs font-medium uppercase tracking-wide text-zinc-500"
-            style={{ gridTemplateColumns: gridColsFull }}
-          >
-            <span className="w-5" aria-hidden />
-            <span>Column</span>
-            <span>Type</span>
-            <span>Locked</span>
-            <span>Purpose</span>
-            <span>Display label</span>
-            {usesSections && <span title="Section is assigned via the layout editor above">Section</span>}
-            <span title="Pin this field to the header card — always visible above tabs">Pin</span>
-            <span title="Hide from reviewers when blind review is on">Blind</span>
-            <span />
-          </div>
-          {mapped.map((m, idx) => {
-            const col = columns.find((c) => c.id === m.sourceColumnId);
-            const colType = col?.type ?? "—";
-            const colLocked = col?.locked ?? false;
-            const isEditablePurpose = isPurposeEditable(m.purpose);
-            const lockedConflict = colLocked && isEditablePurpose;
-            const gridCols = gridColsFull;
-            return (
+          <div className="overflow-x-auto">
+            <div className="min-w-[1180px] space-y-2.5 pb-1">
               <div
-                key={m.fieldKey}
-                className={`grid gap-3 items-center rounded border p-3 ${lockedConflict ? "border-amber-300 bg-amber-50/50" : "border-zinc-200 bg-zinc-50"}`}
-                style={{ gridTemplateColumns: gridCols }}
+                className="grid items-center gap-4 rounded-xl bg-zinc-50 px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500"
+                style={{ gridTemplateColumns: gridColsFull }}
               >
-                {lockedConflict && (
-                  <div className="col-span-full -mt-1 mb-1 flex items-center gap-1.5 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800">
-                    <span>⚠</span>
-                    <span>
-                      Locked column — write conflicts will occur if used as Score or Comments.
-                      Change purpose or unlock in Smartsheet.
-                    </span>
-                  </div>
-                )}
-                <div
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", String(idx));
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
-                    if (fromIdx === idx || isNaN(fromIdx)) return;
-                    setMapped((prev) => {
-                      const next = [...prev];
-                      const [removed] = next.splice(fromIdx, 1);
-                      next.splice(idx, 0, removed);
-                      return next;
-                    });
-                  }}
-                  className="flex w-5 shrink-0 cursor-grab items-center justify-center text-zinc-300 hover:text-zinc-500 active:cursor-grabbing"
-                  title="Drag to reorder"
-                  aria-hidden
-                >
-                  ⠿
-                </div>
-                <div className="min-w-0">
-                  <span className="font-medium text-zinc-700">{m.sourceColumnTitle}</span>
-                </div>
-                <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] font-mono text-zinc-600" title="Smartsheet column type">
-                  {colType}
-                </span>
-                <div className="flex items-center" title="Column is locked in Smartsheet">
-                  {colLocked ? (
-                    <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">🔒</span>
-                  ) : (
-                    <span className="text-zinc-300">—</span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <select
-                    value={m.purpose}
-                    onChange={(e) =>
-                      updateMapping(idx, {
-                        purpose: e.target.value,
-                        displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
-                      })
-                    }
-                    className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                    title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
-                  >
-                    {(() => {
-                      const options = getPurposesForColumnType(colType);
-                      const current = PURPOSES.find((p) => p.value === m.purpose);
-                      const currentIncluded = options.some((p) => p.value === m.purpose);
-                      const toShow = currentIncluded ? options : current ? [...options, current] : options;
-                      return toShow.map((p) => (
-                        <option key={p.value} value={p.value} title={purposeOverrides[p.value]?.desc ?? p.desc}>
-                          {getPurposeLabel(p.value)}
-                        </option>
-                      ));
-                    })()}
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={m.displayLabel}
-                  onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
-                  placeholder="Display label"
-                  className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                />
-                {usesSections && (
-                  m.pinned ? (
-                    <span className="text-xs text-zinc-400 italic" title="Pinned fields are not in a section">—</span>
-                  ) : (
-                    <span className="text-sm text-zinc-600" title="Assign sections via the layout editor above">
-                      {sections.find(
-                        (section) =>
-                          section.section_key ===
-                          (getFieldSectionKey(layoutDraft, m.fieldKey) ??
-                            m.sectionKey ??
-                            sections[0]?.section_key)
-                      )?.label ?? "Review"}
-                    </span>
-                  )
-                )}
-                <label className="flex cursor-pointer items-center gap-1" title="Pin to header card — always visible above tabs">
-                  <input
-                    type="checkbox"
-                    checked={m.pinned ?? false}
-                    onChange={(e) => updateMapping(idx, { pinned: e.target.checked })}
-                    className="rounded border-zinc-300"
-                  />
-                  <span className="text-xs text-zinc-500">Pin</span>
-                </label>
-                <label className="flex cursor-pointer items-center gap-1" title="Hide this field from reviewers when blind review is enabled">
-                  <input
-                    type="checkbox"
-                    checked={m.hiddenInBlindReview ?? false}
-                    onChange={(e) => updateMapping(idx, { hiddenInBlindReview: e.target.checked })}
-                    className="rounded border-zinc-300"
-                  />
-                  <span className="text-xs text-zinc-500">Blind</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => removeMapping(idx)}
-                  className="text-sm text-red-600 hover:underline justify-self-end"
-                >
-                  Remove
-                </button>
+                <span aria-hidden />
+                <span>Column</span>
+                <span>Type</span>
+                <span className="justify-self-center">Locked</span>
+                <span>Purpose</span>
+                <span>Display label</span>
+                {usesSections && <span title="Section is assigned via the layout editor above">Section</span>}
+                <span title="Pin this field to the header card — always visible above tabs">Pin</span>
+                <span title="Hide from reviewers when blind review is on">Blind</span>
+                <span className="justify-self-end">Action</span>
               </div>
-            );
-          })}
-        </div>
+              {mapped.map((m, idx) => {
+                const col = columns.find((c) => c.id === m.sourceColumnId);
+                const colType = col?.type ?? "—";
+                const colLocked = col?.locked ?? false;
+                const isEditablePurpose = isPurposeEditable(m.purpose);
+                const lockedConflict = colLocked && isEditablePurpose;
+                const gridCols = gridColsFull;
+                return (
+                  <div
+                    key={m.fieldKey}
+                    className={`grid items-start gap-4 rounded-xl border px-3 py-3.5 shadow-sm ${lockedConflict ? "border-amber-300 bg-amber-50/70" : "border-zinc-200 bg-white"}`}
+                    style={{ gridTemplateColumns: gridCols }}
+                  >
+                    {lockedConflict && (
+                      <div className="col-span-full -mt-1 mb-1 flex items-center gap-2 rounded-lg bg-amber-100 px-2.5 py-2 text-xs text-amber-800">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-200 font-semibold text-amber-900">
+                          !
+                        </span>
+                        <span>
+                          Locked column — write conflicts will occur if used as Score or Comments.
+                          Change purpose or unlock in Smartsheet.
+                        </span>
+                      </div>
+                    )}
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", String(idx));
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                        if (fromIdx === idx || isNaN(fromIdx)) return;
+                        setMapped((prev) => {
+                          const next = [...prev];
+                          const [removed] = next.splice(fromIdx, 1);
+                          next.splice(idx, 0, removed);
+                          return next;
+                        });
+                      }}
+                      className="flex w-6 shrink-0 cursor-grab items-center justify-center self-stretch text-zinc-300 hover:text-zinc-500 active:cursor-grabbing"
+                      title="Drag to reorder"
+                      aria-hidden
+                    >
+                      ⠿
+                    </div>
+                    <div className="min-w-0 self-center">
+                      <span className="block text-sm font-medium leading-6 text-zinc-800">{m.sourceColumnTitle}</span>
+                    </div>
+                    <span className="inline-flex w-fit self-center rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-mono font-medium uppercase tracking-wide text-zinc-600" title="Smartsheet column type">
+                      {colType}
+                    </span>
+                    <div className="flex items-center justify-center self-center" title="Column is locked in Smartsheet">
+                      {colLocked ? (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Locked
+                        </span>
+                      ) : (
+                        <span className="text-zinc-300">—</span>
+                      )}
+                    </div>
+                    <div className="self-center">
+                      <select
+                        value={m.purpose}
+                        onChange={(e) =>
+                          updateMapping(idx, {
+                            purpose: e.target.value,
+                            displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
+                          })
+                        }
+                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                        title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
+                      >
+                        {(() => {
+                          const options = getPurposesForColumnType(colType);
+                          const current = PURPOSES.find((p) => p.value === m.purpose);
+                          const currentIncluded = options.some((p) => p.value === m.purpose);
+                          const toShow = currentIncluded ? options : current ? [...options, current] : options;
+                          return toShow.map((p) => (
+                            <option key={p.value} value={p.value} title={purposeOverrides[p.value]?.desc ?? p.desc}>
+                              {getPurposeLabel(p.value)}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      value={m.displayLabel}
+                      onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
+                      placeholder="Display label"
+                      className="self-center rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                    />
+                    {usesSections && (
+                      m.pinned ? (
+                        <span
+                          className="inline-flex min-h-10 items-center justify-center rounded-md border border-dashed border-zinc-200 bg-zinc-50 px-3 text-xs font-medium uppercase tracking-wide text-zinc-400"
+                          title="Pinned fields are not in a section"
+                        >
+                          Pinned
+                        </span>
+                      ) : (
+                        <span className="inline-flex min-h-10 items-center rounded-md bg-zinc-100 px-3 text-sm font-medium text-zinc-700" title="Assign sections via the layout editor above">
+                          {sections.find(
+                            (section) =>
+                              section.section_key ===
+                              (getFieldSectionKey(layoutDraft, m.fieldKey) ??
+                                m.sectionKey ??
+                                sections[0]?.section_key)
+                          )?.label ?? "Review"}
+                        </span>
+                      )
+                    )}
+                    <label
+                      className="flex min-h-10 cursor-pointer items-center justify-center gap-2 self-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5"
+                      title="Pin to header card — always visible above tabs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.pinned ?? false}
+                        onChange={(e) => updateMapping(idx, { pinned: e.target.checked })}
+                        className="rounded border-zinc-300"
+                      />
+                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Pin</span>
+                    </label>
+                    <label
+                      className="flex min-h-10 cursor-pointer items-center justify-center gap-2 self-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5"
+                      title="Hide this field from reviewers when blind review is enabled"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={m.hiddenInBlindReview ?? false}
+                        onChange={(e) => updateMapping(idx, { hiddenInBlindReview: e.target.checked })}
+                        className="rounded border-zinc-300"
+                      />
+                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Blind</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeMapping(idx)}
+                      className="inline-flex min-h-10 items-center justify-center self-center justify-self-end rounded-md border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </AccordionCard>
 
@@ -1317,24 +1375,26 @@ export function FieldMappingBuilder({
         </div>
 
         {mapped.length > 0 && roles.length > 0 ? (
-          <div className="overflow-x-auto">
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Permissions matrix</div>
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+            <div className="border-b border-zinc-200 px-4 py-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Permissions matrix
+            </div>
             <table className="min-w-full text-sm">
               <thead>
-                <tr>
-                  <th className="w-48 pb-2 pr-4 text-left text-xs font-medium text-zinc-500">Field</th>
+                <tr className="bg-zinc-50">
+                  <th className="w-48 px-4 pb-2 pt-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-500">Field</th>
                   {roles.map((role) => (
-                    <th key={role.id} className="px-3 pb-1 text-center text-xs font-medium text-zinc-700" colSpan={2}>
+                    <th key={role.id} className="px-3 pb-1 pt-4 text-center text-xs font-medium text-zinc-700" colSpan={2}>
                       {role.label}
                     </th>
                   ))}
                 </tr>
-                <tr className="border-b border-zinc-200">
+                <tr className="border-b border-zinc-200 bg-zinc-50">
                   <th />
                   {roles.map((role) => (
                     <React.Fragment key={role.id}>
-                      <th className="px-2 pb-1 text-center text-[10px] font-medium uppercase text-zinc-400">View</th>
-                      <th className="px-2 pb-1 text-center text-[10px] font-medium uppercase text-zinc-400">Edit</th>
+                      <th className="px-2 pb-3 text-center text-[10px] font-medium uppercase tracking-wide text-zinc-400">View</th>
+                      <th className="px-2 pb-3 text-center text-[10px] font-medium uppercase tracking-wide text-zinc-400">Edit</th>
                     </React.Fragment>
                   ))}
                 </tr>
@@ -1346,30 +1406,39 @@ export function FieldMappingBuilder({
                     : roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }));
                   const isUnsaved = m.isNew === true;
                   return (
-                    <tr key={m.fieldKey} className={`border-b border-zinc-100 ${isUnsaved ? "bg-amber-50" : ""}`}>
-                      <td className="py-1.5 pr-4 text-xs text-zinc-700">
-                        <span className="font-medium">{m.displayLabel || m.sourceColumnTitle}</span>
-                        <span className="ml-1 text-zinc-400">({m.purpose})</span>
+                    <tr key={m.fieldKey} className={`border-t border-zinc-100 ${isUnsaved ? "bg-amber-50/70" : ""}`}>
+                      <td className="px-4 py-3 text-xs text-zinc-700">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-zinc-800">{m.displayLabel || m.sourceColumnTitle}</span>
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                            {m.purpose}
+                          </span>
+                          {isUnsaved && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+                              New
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {roles.map((role) => {
                         const perm = fieldPerms.find((p) => p.roleId === role.id) ?? { roleId: role.id, canView: false, canEdit: false };
                         return (
                           <React.Fragment key={role.id}>
-                            <td className="px-2 py-1.5 text-center">
+                            <td className="px-2 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={perm.canView}
                                 onChange={(e) => updatePermission(fieldIdx, role.id, "canView", e.target.checked)}
-                                className="rounded border-zinc-300"
+                                className="h-4 w-4 rounded border-zinc-300"
                                 title={`${role.label}: view ${m.displayLabel}`}
                               />
                             </td>
-                            <td className="px-2 py-1.5 text-center">
+                            <td className="px-2 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={perm.canEdit}
                                 onChange={(e) => updatePermission(fieldIdx, role.id, "canEdit", e.target.checked)}
-                                className="rounded border-zinc-300"
+                                className="h-4 w-4 rounded border-zinc-300"
                                 title={`${role.label}: edit ${m.displayLabel}`}
                               />
                             </td>

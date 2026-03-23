@@ -2,6 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminDestructiveButtonSmClass,
+  adminInlinePanelClass,
+  adminPrimaryButtonClass,
+} from "@/components/admin/actionStyles";
 
 interface ProgramAdminsSectionProps {
   programId: string;
@@ -60,7 +65,7 @@ export function ProgramAdminsSection({ programId }: ProgramAdminsSectionProps) {
     }
   }
 
-  if (loading) return <div className="text-sm text-zinc-500">Loading…</div>;
+  if (loading) return <div className="text-sm text-zinc-500">Loading...</div>;
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4">
@@ -68,41 +73,51 @@ export function ProgramAdminsSection({ programId }: ProgramAdminsSectionProps) {
       <p className="mb-3 text-sm text-zinc-600">
         Users who can manage cycles, builder, and assignments for this program. They cannot view Smartsheet tokens.
       </p>
-      <div className="flex flex-wrap items-end gap-2">
-        <select
-          value={selectedUserId}
-          onChange={(e) => setSelectedUserId(e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-        >
-          <option value="">— Add admin —</option>
-          {availableUsers.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.last_name}, {u.first_name} ({u.email})
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={handleAdd}
-          disabled={adding || !selectedUserId}
-          className="rounded-md bg-[var(--wsu-crimson)] px-3 py-2 text-sm text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
-        >
-          {adding ? "Adding…" : "Add"}
-        </button>
+      <div className={adminInlinePanelClass}>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="min-w-0">
+            <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Add scholarship admin
+            </label>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="mt-2 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+            >
+              <option value="">- Select a user -</option>
+              {availableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.last_name}, {u.first_name} ({u.email})
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={adding || !selectedUserId}
+            className={adminPrimaryButtonClass}
+          >
+            {adding ? "Adding..." : "Add admin"}
+          </button>
+        </div>
       </div>
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-4 space-y-3">
         {admins.map((a) => (
           <li
             key={a.user_id}
-            className="flex items-center justify-between rounded border border-zinc-100 px-3 py-2"
+            className="grid gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
           >
-            <span>
-              {a.first_name} {a.last_name} ({a.email})
-            </span>
+            <div className="min-w-0">
+              <p className="truncate font-medium text-zinc-900">
+                {a.first_name} {a.last_name}
+              </p>
+              <p className="truncate text-sm text-zinc-500">{a.email}</p>
+            </div>
             <button
               type="button"
               onClick={() => handleRemove(a.user_id)}
-              className="text-sm text-red-600 hover:underline"
+              className={adminDestructiveButtonSmClass}
             >
               Remove
             </button>

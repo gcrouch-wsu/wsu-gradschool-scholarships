@@ -16,6 +16,10 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const secondaryButtonClass =
+    "inline-flex items-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50";
+  const destructiveButtonClass =
+    "inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50";
 
   async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -83,21 +87,21 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 md:justify-end">
       {showReset ? (
-        <form onSubmit={handleResetPassword} className="flex items-center gap-2">
+        <form onSubmit={handleResetPassword} className="flex flex-wrap items-center gap-2 md:justify-end">
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
             minLength={8}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+            className="w-44 rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded-md bg-[var(--wsu-crimson)] px-2 py-1 text-sm text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+            className="inline-flex items-center rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
           >
             Set
           </button>
@@ -108,11 +112,11 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
               setNewPassword("");
               setError("");
             }}
-            className="text-sm text-zinc-600 hover:underline"
+            className={secondaryButtonClass}
           >
             Cancel
           </button>
-          {error && <span className="text-sm text-red-600">{error}</span>}
+          {error && <span className="basis-full text-xs text-red-600 md:text-right">{error}</span>}
         </form>
       ) : (
         <>
@@ -120,7 +124,7 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
             type="button"
             onClick={() => setShowReset(true)}
             disabled={loading}
-            className="text-sm text-zinc-600 hover:underline disabled:opacity-50"
+            className={secondaryButtonClass}
           >
             Reset password
           </button>
@@ -128,7 +132,7 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
             type="button"
             onClick={handleToggleStatus}
             disabled={loading}
-            className="text-sm text-zinc-600 hover:underline disabled:opacity-50"
+            className={secondaryButtonClass}
           >
             {status === "active" ? "Deactivate" : "Activate"}
           </button>
@@ -137,7 +141,7 @@ export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserAct
               type="button"
               onClick={handleDelete}
               disabled={loading}
-              className="text-sm text-red-600 hover:underline disabled:opacity-50"
+              className={destructiveButtonClass}
             >
               Delete
             </button>

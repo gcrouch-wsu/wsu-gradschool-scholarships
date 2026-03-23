@@ -4,6 +4,14 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "./RichTextEditor";
+import {
+  adminDestructiveButtonClass,
+  adminDestructiveButtonSmClass,
+  adminPrimaryButtonClass,
+  adminSecondaryButtonClass,
+  adminSecondaryButtonSmClass,
+  adminWarningButtonSmClass,
+} from "@/components/admin/actionStyles";
 import { RowLayoutEditor } from "@/components/layout/RowLayoutEditor";
 import type { SavedLayoutJson } from "@/lib/layout";
 import { createEmptyLayout } from "@/lib/layout";
@@ -619,7 +627,7 @@ export default function IntakeFormBuilder({
                 </div>
                 <button
                   onClick={() => removeField(idx)}
-                  className="text-xs text-red-600 hover:underline"
+                  className={adminDestructiveButtonSmClass}
                 >
                   Remove
                 </button>
@@ -758,7 +766,7 @@ export default function IntakeFormBuilder({
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <p className="text-sm text-zinc-600">Audit of nomination attempts.</p>
-            <button onClick={loadSubmissions} className="text-xs text-blue-600 hover:underline">Refresh</button>
+            <button onClick={loadSubmissions} className={adminSecondaryButtonSmClass}>Refresh</button>
           </div>
           
           <div className="overflow-x-auto">
@@ -790,12 +798,12 @@ export default function IntakeFormBuilder({
                     <td className="px-4 py-3 text-xs">
                       <div className="flex gap-3">
                         {s.status !== "completed" && (
-                          <button onClick={() => handleRetry(s.submission_id)} className="text-blue-600 hover:underline">Retry</button>
+                          <button onClick={() => handleRetry(s.submission_id)} className={adminSecondaryButtonSmClass}>Retry</button>
                         )}
                         {!s.is_resolved && s.status !== "completed" && (
-                          <button onClick={() => handleResolve(s.submission_id)} className="text-amber-700 hover:underline">Resolve</button>
+                          <button onClick={() => handleResolve(s.submission_id)} className={adminWarningButtonSmClass}>Resolve</button>
                         )}
-                        <button onClick={() => handleDeleteSubmission(s.submission_id)} className="text-red-600 hover:underline">Delete</button>
+                        <button onClick={() => handleDeleteSubmission(s.submission_id)} className={adminDestructiveButtonSmClass}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -825,7 +833,7 @@ export default function IntakeFormBuilder({
           <button
             type="button"
             onClick={handleDeleteForm}
-            className="mt-4 rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100"
+            className={`mt-4 ${adminDestructiveButtonClass}`}
           >
             Delete intake form
           </button>
@@ -835,7 +843,7 @@ export default function IntakeFormBuilder({
       <div className="flex justify-between border-t border-zinc-200 pt-6">
         <Link
           href={`/admin/scholarships/${programId}/cycles/${cycleId}`}
-          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          className={adminSecondaryButtonClass}
         >
           Back to cycle
         </Link>
@@ -843,14 +851,14 @@ export default function IntakeFormBuilder({
           <button
             onClick={handleSave}
             disabled={saving || publishing}
-            className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            className={adminSecondaryButtonClass}
           >
             {saving ? "Saving..." : "Save Draft"}
           </button>
           <button
             onClick={handlePublish}
             disabled={saving || publishing}
-            className="rounded bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
+            className={adminPrimaryButtonClass}
           >
             {publishing ? "Publishing..." : "Publish Form"}
           </button>

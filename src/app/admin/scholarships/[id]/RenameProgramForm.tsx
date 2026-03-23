@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  adminInlinePanelClass,
+  adminPrimaryButtonSmClass,
+  adminSecondaryButtonSmClass,
+} from "@/components/admin/actionStyles";
 
 export function RenameProgramForm({
   programId,
@@ -55,15 +60,15 @@ export function RenameProgramForm({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="mt-1 flex items-center gap-1 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
+        className={`mt-1 ${adminSecondaryButtonSmClass}`}
       >
-        ✏ Rename
+        Rename
       </button>
     );
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded border border-zinc-200 bg-zinc-50 p-3">
+    <div className={`mt-3 max-w-xl space-y-3 ${adminInlinePanelClass}`}>
       <div>
         <label className="block text-xs font-medium text-zinc-600">Name</label>
         <input
@@ -92,14 +97,14 @@ export function RenameProgramForm({
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="rounded bg-[var(--wsu-crimson)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+          className={adminPrimaryButtonSmClass}
         >
           {saving ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
           onClick={handleCancel}
-          className="rounded border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+          className={adminSecondaryButtonSmClass}
         >
           Cancel
         </button>

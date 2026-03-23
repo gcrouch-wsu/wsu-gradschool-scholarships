@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { adminPrimaryButtonClass } from "@/components/admin/actionStyles";
 
 interface AssignReviewerFormProps {
   cycleId: string;
@@ -63,54 +64,70 @@ export function AssignReviewerForm({
   if (roles.length === 0) return null;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
-      <div>
-        <label className="block text-xs font-medium text-zinc-600">User</label>
-        {availableUsers.length > 10 && (
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name or email…"
-            className="mt-1 block w-48 rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-          />
-        )}
-        <select
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          required
-          className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+    <form
+      onSubmit={handleSubmit}
+      className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+    >
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1.8fr)_minmax(180px,0.8fr)_auto] md:items-end">
+        <div className="min-w-0">
+          <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Reviewer
+          </label>
+          <div className="mt-2 space-y-2">
+            {availableUsers.length > 10 && (
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or email..."
+                className="block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+              />
+            )}
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              required
+              className="block w-full min-w-0 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+            >
+              <option value="">- Select -</option>
+              {filteredUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.last_name}, {u.first_name} ({u.email})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Role
+          </label>
+          <select
+            value={roleId}
+            onChange={(e) => setRoleId(e.target.value)}
+            className="mt-2 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+          >
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="submit"
+          disabled={loading || availableUsers.length === 0}
+          className={adminPrimaryButtonClass}
         >
-          <option value="">— Select —</option>
-          {filteredUsers.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.last_name}, {u.first_name} ({u.email})
-            </option>
-          ))}
-        </select>
+          {loading ? "Adding..." : "Assign"}
+        </button>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-zinc-600">Role</label>
-        <select
-          value={roleId}
-          onChange={(e) => setRoleId(e.target.value)}
-          className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-        >
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <button
-        type="submit"
-        disabled={loading || availableUsers.length === 0}
-        className="rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
-      >
-        {loading ? "Adding…" : "Assign"}
-      </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {availableUsers.length === 0 && (
+        <p className="mt-3 text-sm text-zinc-500">
+          All available reviewers are already assigned to this cycle.
+        </p>
+      )}
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </form>
   );
 }

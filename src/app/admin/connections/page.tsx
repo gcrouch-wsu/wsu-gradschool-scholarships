@@ -43,30 +43,46 @@ export default async function ConnectionsPage() {
 
       <CreateConnectionForm programs={programs} />
 
-      <div className="mt-8 space-y-2">
+      <div className="mt-8 space-y-3">
         {connections.length === 0 ? (
           <p className="text-sm text-zinc-500">No connections yet.</p>
         ) : (
           connections.map((c) => (
             <div
               key={c.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded border border-zinc-200 bg-white px-4 py-3"
+              className="grid gap-4 rounded-xl border border-zinc-200 bg-white px-4 py-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
             >
-              <div>
-                <span className="font-medium text-zinc-900">{c.name}</span>
-                <span className="ml-2 text-sm text-zinc-500">{c.provider}</span>
-                {c.last_verified_at && (
-                  <span className="ml-2 text-xs text-zinc-400">
-                    Verified {new Date(c.last_verified_at).toLocaleDateString()}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-zinc-900">{c.name}</span>
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    {c.provider}
                   </span>
-                )}
-                {c.rotated_at && (
-                  <span className="ml-2 text-xs text-zinc-400">
-                    Rotated {new Date(c.rotated_at).toLocaleDateString()}
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      c.status === "active"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-zinc-100 text-zinc-600"
+                    }`}
+                  >
+                    {c.status}
                   </span>
-                )}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+                  {c.last_verified_at && (
+                    <span>
+                      Verified {new Date(c.last_verified_at).toLocaleDateString()}
+                    </span>
+                  )}
+                  {c.rotated_at && (
+                    <span>
+                      Rotated {new Date(c.rotated_at).toLocaleDateString()}
+                    </span>
+                  )}
+                  {!c.program_id && <span>Platform-only</span>}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <AssignProgramForm
                   connectionId={c.id}
                   connectionName={c.name}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { adminDestructiveButtonSmClass } from "@/components/admin/actionStyles";
 
 export function RemoveAssignmentButton({
   cycleId,
@@ -32,7 +33,7 @@ export function RemoveAssignmentButton({
       type="button"
       onClick={handleRemove}
       disabled={loading}
-      className="text-sm text-red-600 hover:underline disabled:opacity-50"
+      className={adminDestructiveButtonSmClass}
     >
       Remove
     </button>
