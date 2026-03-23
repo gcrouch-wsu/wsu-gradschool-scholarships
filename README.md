@@ -7,7 +7,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
 - Admin dashboard for programs, cycles, users, connections, templates, and assignments
 - Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, and direct write to Smartsheet rows
 - Reviewer form builder with role-aware field behavior, blind-review hiding, row-based layout, publish/unpublish, and version snapshots
-- Reviewer workflow with progress tracking, Save & Next, row-level attachments, and reviewer-uploaded attachments
+- Reviewer workflow with progress tracking, Save and Next, row-level attachments, and reviewer-uploaded attachments
 - Admin preview and export tools, including ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and schema-drift protection
 
@@ -40,7 +40,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
    - `ENCRYPTION_KEY`: 32+ character key used for Smartsheet credential encryption and other signing/hashing
    - `SEED_ADMIN_PASSWORD`: password for the initial admin created by the seed script
 
-   Commonly-needed additional values:
+   Commonly needed additional values:
 
    - `SEED_ADMIN_EMAIL`: optional, defaults to `admin@example.com`
    - `NEXT_PUBLIC_APP_URL`: app base URL, required for production-facing links and signed file routes
@@ -64,7 +64,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
 
 5. Log in at `/login`.
 
-For more detailed local setup and operational notes, see [instruction.md](instruction.md).
+For more detailed local setup and operator notes, see [instruction.md](instruction.md).
 
 ## Database migrations
 
@@ -78,7 +78,7 @@ Current migration set:
 - `006_reviewer_row_files.sql`
 - `007_layout_json.sql`
 
-Important: production deploys are not enough by themselves. New code that depends on new tables/columns still requires the matching SQL migration to be applied to the target database.
+Important: deploying code is not enough by itself. New code that depends on new tables or columns still requires the matching SQL migration to be applied to the target database.
 
 ## Recommended local verification
 
@@ -96,7 +96,7 @@ npm run build
 - Environment variable changes: add/update them in Vercel, then redeploy
 - Database changes: apply the matching SQL migration to the production database separately
 
-Required production environment variables depend on enabled features, but a typical full deployment needs:
+Typical production environment variables:
 
 - `DATABASE_URL`
 - `ENCRYPTION_KEY`
@@ -114,11 +114,8 @@ Required production environment variables depend on enabled features, but a typi
 
 ## Key docs
 
-- [PROJECT_SPEC.md](PROJECT_SPEC.md): current platform architecture and remaining platform tasks
-- [forms.md](forms.md): intake-form build spec
-- [layout-builder-spec.md](layout-builder-spec.md): shared direction for intake/reviewer layout builders
-- [layout-builder-blueprint.md](layout-builder-blueprint.md): implementation-ready layout blueprint
-- [smartsheet-native-attachments.md](smartsheet-native-attachments.md): future spec for mirroring Blob uploads into native Smartsheet file attachments
+- [PROJECT_SPEC.md](PROJECT_SPEC.md): canonical platform architecture, current behavior, and remaining build specifications
+- [instruction.md](instruction.md): operator-facing setup and deployment walkthrough
 
 ## Security notes
 

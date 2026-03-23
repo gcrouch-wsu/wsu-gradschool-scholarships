@@ -57,3 +57,11 @@ next-env.d.ts
 
 # local reference files (not for repo)
 /input_forms
+
+# local tool state
+.claude/
+
+# markdown docs
+*.md
+!README.md
+!instruction.md
