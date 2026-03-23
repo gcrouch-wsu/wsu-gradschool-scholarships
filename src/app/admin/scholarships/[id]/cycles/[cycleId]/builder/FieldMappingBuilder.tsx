@@ -711,7 +711,7 @@ export function FieldMappingBuilder({
           );
           setMapped(
             d.fieldConfigs.map((fc: FieldConfig) => ({
-              sourceColumnId: fc.source_column_id,
+              sourceColumnId: Number(fc.source_column_id),
               sourceColumnTitle: fc.source_column_title,
               purpose: fc.purpose,
               displayLabel: fc.display_label,
@@ -1142,9 +1142,9 @@ export function FieldMappingBuilder({
             <span>Locked</span>
             <span>Purpose</span>
             <span>Display label</span>
-            {usesSections && <span>Section</span>}
-            <span>Header</span>
-            <span>Blind</span>
+            {usesSections && <span title="Section is assigned via the layout editor above">Section</span>}
+            <span title="Pin this field to the header card — always visible above tabs">Pin</span>
+            <span title="Hide from reviewers when blind review is on">Blind</span>
             <span />
           </div>
           {mapped.map((m, idx) => {
@@ -1243,9 +1243,9 @@ export function FieldMappingBuilder({
                 />
                 {usesSections && (
                   m.pinned ? (
-                    <span className="text-xs text-zinc-400 italic">—</span>
+                    <span className="text-xs text-zinc-400 italic" title="Pinned fields are not in a section">—</span>
                   ) : (
-                    <span className="text-sm text-zinc-600">
+                    <span className="text-sm text-zinc-600" title="Assign sections via the layout editor above">
                       {sections.find(
                         (section) =>
                           section.section_key ===
@@ -1272,7 +1272,7 @@ export function FieldMappingBuilder({
                     onChange={(e) => updateMapping(idx, { hiddenInBlindReview: e.target.checked })}
                     className="rounded border-zinc-300"
                   />
-                  <span className="text-xs text-zinc-500">Hide</span>
+                  <span className="text-xs text-zinc-500">Blind</span>
                 </label>
                 <button
                   type="button"

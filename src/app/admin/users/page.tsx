@@ -64,7 +64,7 @@ export default async function UsersPage() {
               >
                 {u.status}
               </span>
-              <UserActions userId={u.id} status={u.status} />
+              <UserActions userId={u.id} status={u.status} isSelf={u.id === user.id} isPlatformAdmin={u.is_platform_admin} />
             </div>
           </div>
         ))}

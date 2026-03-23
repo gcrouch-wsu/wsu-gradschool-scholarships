@@ -61,3 +61,43 @@ export async function PATCH(
 
   return NextResponse.json({ error: "No valid update provided" }, { status: 400 });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user.is_platform_admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { id } = await params;
+
+  if (id === user.id) {
+    return NextResponse.json({ error: "Cannot delete your own account" }, { status: 422 });
+  }
+
+  const { rows: target } = await query<{ is_platform_admin: boolean; email: string }>(
+    "SELECT is_platform_admin, email FROM users WHERE id = $1",
+    [id]
+  );
+  if (!target[0]) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  if (target[0].is_platform_admin) {
+    return NextResponse.json(
+      { error: "Cannot delete a platform admin account. Remove their admin role first." },
+      { status: 422 }
+    );
+  }
+
+  await query("DELETE FROM users WHERE id = $1", [id]);
+
+  await logAudit({
+    actorUserId: user.id,
+    actionType: "user.deleted",
+    targetType: "user",
+    targetId: id,
+    metadata: { email: target[0].email },
+  });
+
+  return NextResponse.json({ success: true });
+}

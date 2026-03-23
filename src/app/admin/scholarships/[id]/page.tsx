@@ -59,7 +59,9 @@ export default async function ProgramDetailPage({
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-900">{program.name}</h1>
-            <p className="text-sm text-zinc-500">{program.slug}</p>
+            <p className="text-sm text-zinc-400" title="The URL identifier — cannot be changed after creation">
+              {program.slug} <span className="text-[10px]">(permanent)</span>
+            </p>
             {canManage && (
               <RenameProgramForm
                 programId={id}

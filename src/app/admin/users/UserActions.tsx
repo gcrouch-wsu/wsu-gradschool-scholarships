@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 interface UserActionsProps {
   userId: string;
   status: string;
+  isSelf: boolean;
+  isPlatformAdmin: boolean;
 }
 
-export function UserActions({ userId, status }: UserActionsProps) {
+export function UserActions({ userId, status, isSelf, isPlatformAdmin }: UserActionsProps) {
   const router = useRouter();
   const [showReset, setShowReset] = useState(false);
   const [newPassword, setNewPassword] = useState("");
@@ -36,6 +38,25 @@ export function UserActions({ userId, status }: UserActionsProps) {
       }
       setShowReset(false);
       setNewPassword("");
+      router.refresh();
+    } catch {
+      setError("An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Permanently delete this user? This cannot be undone.")) return;
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to delete");
+        return;
+      }
       router.refresh();
     } catch {
       setError("An error occurred");
@@ -111,6 +132,16 @@ export function UserActions({ userId, status }: UserActionsProps) {
           >
             {status === "active" ? "Deactivate" : "Activate"}
           </button>
+          {!isSelf && !isPlatformAdmin && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={loading}
+              className="text-sm text-red-600 hover:underline disabled:opacity-50"
+            >
+              Delete
+            </button>
+          )}
         </>
       )}
     </div>

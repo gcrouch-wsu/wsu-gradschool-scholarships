@@ -20,14 +20,18 @@ export async function GET(
 
   const { cycleId } = await params;
 
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
+  const { rows: membership } = await query<{ role_id: string; cycle_status: string }>(
+    `SELECT m.role_id, c.status AS cycle_status
+     FROM scholarship_memberships m
      JOIN scholarship_cycles c ON c.id = m.cycle_id
-     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
+     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active'`,
     [user.id, cycleId]
   );
   if (membership.length === 0) {
-    return NextResponse.json({ error: "Not assigned to this cycle" }, { status: 403 });
+    return NextResponse.json({ error: "You are not assigned to this review cycle." }, { status: 403 });
+  }
+  if (membership[0]!.cycle_status !== "active") {
+    return NextResponse.json({ error: "This cycle is not currently open for review." }, { status: 403 });
   }
 
   const { rows: cycles } = await query<{

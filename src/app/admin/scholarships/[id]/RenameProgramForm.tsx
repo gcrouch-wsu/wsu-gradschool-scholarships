@@ -55,9 +55,9 @@ export function RenameProgramForm({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-xs text-zinc-400 hover:text-zinc-600 hover:underline"
+        className="mt-1 flex items-center gap-1 rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
       >
-        Rename
+        ✏ Rename
       </button>
     );
   }
