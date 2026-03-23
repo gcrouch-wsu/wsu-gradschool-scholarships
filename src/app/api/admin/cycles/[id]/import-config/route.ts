@@ -80,6 +80,8 @@ export async function POST(
     );
   }
 
+  const skippedRoles: string[] = [];
+
   await withTransaction(async (tx) => {
     await tx(
       "DELETE FROM field_permissions WHERE field_config_id IN (SELECT id FROM field_configs WHERE cycle_id = $1)",
@@ -89,18 +91,50 @@ export async function POST(
     await tx("DELETE FROM view_sections WHERE view_config_id IN (SELECT id FROM view_configs WHERE cycle_id = $1)", [targetCycleId]);
     await tx("DELETE FROM view_configs WHERE cycle_id = $1", [targetCycleId]);
     await tx("DELETE FROM field_configs WHERE cycle_id = $1", [targetCycleId]);
-    await tx("DELETE FROM roles WHERE cycle_id = $1", [targetCycleId]);
+
+    // Merge roles by key: update existing, insert new (cap=10), skip if at cap.
+    // Deduplicate imported roles by key first (keep first occurrence).
+    const seenImportKeys = new Set<string>();
+    const deduplicatedRoles = roles.filter((r: { key?: string }, i: number) => {
+      const key = r.key ?? `role_${i}`;
+      if (seenImportKeys.has(key)) return false;
+      seenImportKeys.add(key);
+      return true;
+    });
+
+    const { rows: existingRoles } = await tx<{ id: string; key: string }>(
+      "SELECT id, key FROM roles WHERE cycle_id = $1",
+      [targetCycleId]
+    );
+    const existingByKey = new Map(existingRoles.map((r) => [r.key, r.id]));
+    let existingCount = existingRoles.length;
 
     const roleKeyToId = new Map<string, string>();
-    for (const r of roles) {
-      const key = r.key ?? `role_${roleKeyToId.size}`;
+    for (let i = 0; i < deduplicatedRoles.length; i++) {
+      const r = deduplicatedRoles[i];
+      const key = r.key ?? `role_${i}`;
       const label = r.label ?? key;
-      const sortOrder = r.sort_order ?? roleKeyToId.size;
-      const { rows } = await tx<{ id: string }>(
-        "INSERT INTO roles (cycle_id, key, label, sort_order) VALUES ($1, $2, $3, $4) RETURNING id",
-        [targetCycleId, key, label, sortOrder]
-      );
-      roleKeyToId.set(key, rows[0]!.id);
+      const sortOrder = r.sort_order ?? i;
+
+      const existingId = existingByKey.get(key);
+      if (existingId) {
+        await tx(
+          "UPDATE roles SET label = $1, sort_order = $2 WHERE id = $3",
+          [label, sortOrder, existingId]
+        );
+        roleKeyToId.set(key, existingId);
+      } else {
+        if (existingCount >= 10) {
+          skippedRoles.push(label);
+          continue;
+        }
+        const { rows } = await tx<{ id: string }>(
+          "INSERT INTO roles (cycle_id, key, label, sort_order) VALUES ($1, $2, $3, $4) RETURNING id",
+          [targetCycleId, key, label, sortOrder]
+        );
+        roleKeyToId.set(key, rows[0]!.id);
+        existingCount++;
+      }
     }
 
     const fieldKeyToConfigId = new Map<string, string>();
@@ -131,7 +165,7 @@ export async function POST(
       if (roleId && fieldConfigId) {
         await tx(
           "INSERT INTO field_permissions (field_config_id, role_id, can_view, can_edit) VALUES ($1, $2, $3, $4)",
-          [fieldConfigId, roleId, p.can_view !== false, p.can_edit === true]
+          [fieldConfigId, roleId, p.can_view !== false || p.can_edit === true, p.can_edit === true]
         );
       }
     }
@@ -262,14 +296,18 @@ export async function POST(
     );
   });
 
+  const warnings: string[] = skippedRoles.map(
+    (label) => `Role "${label}" was skipped — the 10-role limit was reached.`
+  );
+
   await logAudit({
     actorUserId: user.id,
     cycleId: targetCycleId,
     actionType: "cycle.config_imported",
     targetType: "cycle",
     targetId: targetCycleId,
-    metadata: { fieldConfigCount: fieldConfigs.length },
+    metadata: { fieldConfigCount: fieldConfigs.length, skippedRoles },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, warnings });
 }

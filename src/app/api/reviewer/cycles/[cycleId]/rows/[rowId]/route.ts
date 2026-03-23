@@ -194,12 +194,18 @@ export async function POST(
     );
   }
 
-  const cells = updates.filter((c) =>
-    c.columnId != null && editableIds.has(String(c.columnId))
-  );
+  // Any column in the request that is not in editableIds is a forbidden write — reject the whole request.
+  const forbidden = updates.filter((c) => c.columnId != null && !editableIds.has(String(c.columnId)));
+  if (forbidden.length > 0) {
+    return NextResponse.json(
+      { error: "Write permission denied: one or more columns are not editable by your role" },
+      { status: 403 }
+    );
+  }
+  const cells = updates.filter((c) => c.columnId != null);
   if (cells.length === 0) {
     return NextResponse.json(
-      { error: "No editable cells to update" },
+      { error: "No cells to update" },
       { status: 400 }
     );
   }

@@ -35,6 +35,22 @@ export async function POST(
     );
   }
 
+  // Collect warnings before publishing (non-blocking).
+  const { rows: zeroViewRoles } = await query<{ label: string }>(
+    `SELECT r.label
+     FROM roles r
+     WHERE r.cycle_id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM field_permissions fp
+         WHERE fp.role_id = r.id AND fp.can_view = true
+       )
+     ORDER BY r.sort_order`,
+    [cycleId]
+  );
+  const warnings: string[] = zeroViewRoles.map(
+    (r) => `Role "${r.label}" has no viewable fields — reviewers assigned this role will see a blank form.`
+  );
+
   await withTransaction(async (tx) => {
     await tx(
       "UPDATE config_versions SET status = 'superseded' WHERE cycle_id = $1 AND id != $2",
@@ -56,8 +72,8 @@ export async function POST(
     actionType: "cycle.config_published",
     targetType: "config",
     targetId: latest.id,
-    metadata: {},
+    metadata: { warnings },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, warnings });
 }

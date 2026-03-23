@@ -111,7 +111,7 @@ export default async function PreviewPage({
         Preview as reviewer
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
-        See what reviewers will see. Uses the first role in the cycle. No changes are saved.
+        See what reviewers will see. Select a role to simulate. No changes are saved.
       </p>
 
       {showDetail ? (

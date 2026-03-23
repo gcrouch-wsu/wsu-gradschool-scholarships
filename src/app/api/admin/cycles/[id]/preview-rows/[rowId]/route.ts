@@ -7,12 +7,15 @@ import { decrypt } from "@/lib/encryption";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import { getSheetRows } from "@/lib/smartsheet";
 
-async function getPreviewRowData(cycleId: string, rowId: number) {
+async function getPreviewRowData(cycleId: string, rowId: number, requestedRoleId?: string | null) {
   const { rows: roles } = await query<{ id: string }>(
-    "SELECT id FROM roles WHERE cycle_id = $1 ORDER BY sort_order LIMIT 1",
+    "SELECT id FROM roles WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
-  const roleId = roles[0]?.id;
+  const roleId =
+    requestedRoleId && roles.some((r) => r.id === requestedRoleId)
+      ? requestedRoleId
+      : roles[0]?.id;
   if (!roleId) return null;
 
   const { rows: cycles } = await query<{
@@ -46,7 +49,7 @@ async function getPreviewRowData(cycleId: string, rowId: number) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; rowId: string }> }
 ) {
   const user = await getSessionUser();
@@ -65,7 +68,8 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const data = await getPreviewRowData(cycleId, rowIdNum);
+  const requestedRoleId = new URL(request.url).searchParams.get("roleId");
+  const data = await getPreviewRowData(cycleId, rowIdNum, requestedRoleId);
   if (!data) {
     return NextResponse.json(
       { error: "Row not found or cycle not configured" },

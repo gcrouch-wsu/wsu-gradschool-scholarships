@@ -20,6 +20,7 @@ export function PublishConfigButton({
   const [loading, setLoading] = useState(false);
   const [unpublishLoading, setUnpublishLoading] = useState(false);
   const [error, setError] = useState("");
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   if (!latestConfigId) return null;
 
@@ -29,6 +30,7 @@ export function PublishConfigButton({
   async function handlePublish() {
     if (!confirm("Publish this configuration? Reviewers will see the updated fields and layout.")) return;
     setError("");
+    setWarnings([]);
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/publish-config`, {
@@ -39,6 +41,7 @@ export function PublishConfigButton({
         setError(data.error ?? "Publish failed");
         return;
       }
+      if (data.warnings?.length) setWarnings(data.warnings);
       router.refresh();
     } catch {
       setError("An error occurred");
@@ -113,6 +116,14 @@ export function PublishConfigButton({
         </button>
       )}
       {error && <span className="text-sm text-red-600">{error}</span>}
+      {warnings.length > 0 && (
+        <div className="mt-2 w-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="font-medium">Published with warnings:</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

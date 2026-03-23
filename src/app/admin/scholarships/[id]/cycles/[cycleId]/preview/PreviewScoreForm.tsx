@@ -59,15 +59,18 @@ export function PreviewScoreForm({
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [pinnedFieldKeys, setPinnedFieldKeys] = useState<string[]>([]);
   const [columnOptions, setColumnOptions] = useState<Record<number, string[]>>({});
+  const [previewRoles, setPreviewRoles] = useState<{ id: string; label: string }[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = useState<string>("");
 
   const loadRow = useCallback(async () => {
     const base = `/api/admin/cycles/${cycleId}`;
     setLoading(true);
     setError(null);
+    const roleParam = selectedRoleId ? `?roleId=${selectedRoleId}` : "";
     try {
       const [configRes, rowRes, rowsRes] = await Promise.all([
-        fetch(`${base}/preview-config`),
-        fetch(`${base}/preview-rows/${rowId}`),
+        fetch(`${base}/preview-config${roleParam}`),
+        fetch(`${base}/preview-rows/${rowId}${roleParam}`),
         fetch(`${base}/preview-rows`),
       ]);
       if (!configRes.ok) {
@@ -92,6 +95,10 @@ export function PreviewScoreForm({
       }
       const fieldsData = rowData.fields ?? [];
       setFields(fieldsData);
+      if (configData.roles?.length) {
+        setPreviewRoles(configData.roles);
+        if (!selectedRoleId && configData.activeRoleId) setSelectedRoleId(configData.activeRoleId);
+      }
       const vType = configData.viewType ?? "tabbed";
       const vSections = configData.viewSections ?? [];
       setViewType(vType);
@@ -113,20 +120,44 @@ export function PreviewScoreForm({
     } finally {
       setLoading(false);
     }
-  }, [cycleId, rowId]);
+  }, [cycleId, rowId, selectedRoleId]);
 
   useEffect(() => {
     loadRow();
   }, [loadRow]);
 
+  const roleSelector = previewRoles.length > 1 ? (
+    <div className="mb-4 flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+      <span className="font-medium text-blue-800">Preview as:</span>
+      <select
+        value={selectedRoleId}
+        onChange={(e) => setSelectedRoleId(e.target.value)}
+        className="rounded border border-blue-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+      >
+        {previewRoles.map((r) => (
+          <option key={r.id} value={r.id}>{r.label}</option>
+        ))}
+      </select>
+      <span className="text-blue-600">— fields shown match live reviewer API for this role</span>
+    </div>
+  ) : null;
+
   if (loading) {
-    return <div className="mt-6 text-zinc-500">Loading…</div>;
+    return (
+      <div className="mt-4">
+        {roleSelector}
+        <div className="mt-6 text-zinc-500">Loading…</div>
+      </div>
+    );
   }
 
   if (error && fields.length === 0) {
     return (
-      <div className="mt-6 rounded border border-red-200 bg-red-50 p-4 text-red-900">
-        {error}
+      <div className="mt-4">
+        {roleSelector}
+        <div className="mt-2 rounded border border-red-200 bg-red-50 p-4 text-red-900">
+          {error}
+        </div>
       </div>
     );
   }
@@ -212,6 +243,7 @@ export function PreviewScoreForm({
 
   return (
     <div className="mt-6 space-y-6">
+      {roleSelector}
       <div className="rounded border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
         Preview mode — this is what reviewers see. No changes are saved.
       </div>

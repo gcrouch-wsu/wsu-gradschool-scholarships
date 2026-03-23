@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RowLayoutEditor } from "@/components/layout/RowLayoutEditor";
@@ -171,6 +172,83 @@ interface Role {
   id: string;
   key: string;
   label: string;
+  sort_order?: number;
+}
+
+function RoleRow({
+  role,
+  canDelete,
+  operatingOn,
+  onRename,
+  onDelete,
+}: {
+  role: Role;
+  canDelete: boolean;
+  operatingOn: boolean;
+  onRename: (label: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(role.label);
+
+  function commit() {
+    if (label.trim() && label.trim() !== role.label) onRename(label.trim());
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setLabel(role.label); setEditing(false); } }}
+          autoFocus
+          className="rounded border border-zinc-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+        />
+        <button type="button" onClick={commit} className="text-xs text-green-700 hover:underline">Save</button>
+        <button type="button" onClick={() => { setLabel(role.label); setEditing(false); }} className="text-xs text-zinc-500 hover:underline">Cancel</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-32 truncate font-mono text-xs text-zinc-400" title={role.key}>{role.key}</span>
+      <span className="text-sm text-zinc-800">{role.label}</span>
+      <button type="button" onClick={() => setEditing(true)} disabled={operatingOn} className="text-xs text-zinc-500 hover:underline disabled:opacity-40">Rename</button>
+      {canDelete && (
+        <button type="button" onClick={onDelete} disabled={operatingOn} className="text-xs text-red-600 hover:underline disabled:opacity-40">Delete</button>
+      )}
+    </div>
+  );
+}
+
+function AddRoleForm({ loading, onCreate }: { loading: boolean; onCreate: (label: string) => void }) {
+  const [label, setLabel] = useState("");
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (label.trim()) { onCreate(label.trim()); setLabel(""); }
+  }
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 flex items-center gap-2">
+      <input
+        type="text"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        placeholder="New role label…"
+        className="rounded border border-zinc-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+      />
+      <button
+        type="submit"
+        disabled={loading || !label.trim()}
+        className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+      >
+        {loading ? "Adding…" : "+ Add role"}
+      </button>
+    </form>
+  );
 }
 
 interface MappedField {
@@ -184,6 +262,7 @@ interface MappedField {
   sectionKey?: string;
   pinned?: boolean;
   hiddenInBlindReview?: boolean;
+  isNew?: boolean;
   permissions?: Array<{ roleId: string; canView: boolean; canEdit: boolean }>;
 }
 
@@ -553,6 +632,8 @@ export function FieldMappingBuilder({
   const [layoutDraft, setLayoutDraft] = useState<DraftLayoutJson>(() =>
     createDraftLayout(null, [{ section_key: "main", label: "Review", sort_order: 0 }])
   );
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [roleOperating, setRoleOperating] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -579,6 +660,7 @@ export function FieldMappingBuilder({
       .then((r) => r.json())
       .then((d) => {
         setData(d);
+        setRoles(d.roles ?? []);
         let pinnedFieldKeys: string[] = [];
         let hiddenFieldKeys: string[] = [];
         if (d.viewConfigs?.[0]) {
@@ -658,9 +740,11 @@ export function FieldMappingBuilder({
     const colType = isAttachment ? "attachment_list" : col.type;
     const purposes = getPurposesForColumnType(colType);
     const defaultPurpose = isAttachment ? "attachment" : (purposes[0]?.value ?? "metadata");
-    const defaultPerms = (data?.roles ?? []).map((r) => ({
+    // score/comments default to no access; all other purposes default to view-only
+    const isScorePurpose = defaultPurpose === "score" || defaultPurpose === "comments";
+    const defaultPerms = roles.map((r) => ({
       roleId: r.id,
-      canView: true,
+      canView: !isScorePurpose,
       canEdit: false,
     }));
     const defaultSection = sections.length > 0 ? sections[0]?.section_key : undefined;
@@ -676,6 +760,7 @@ export function FieldMappingBuilder({
         fieldKey: key,
         sectionKey: defaultSection,
         permissions: defaultPerms,
+        isNew: true,
       },
     ]);
     setLayoutDraft((prev) => appendFieldAsFullRow(prev, key, defaultSection));
@@ -754,19 +839,96 @@ export function FieldMappingBuilder({
   }
 
   function ensurePermissions(m: MappedField): MappedField {
-    const roles = data?.roles ?? [];
-    const canEdit = isPurposeEditable(m.purpose);
+    const defaultCanEdit = isPurposeEditable(m.purpose);
     return {
       ...m,
       permissions: roles.map((r) => {
         const existing = m.permissions?.find((p) => p.roleId === r.id);
-        return {
-          roleId: r.id,
-          canView: existing?.canView ?? true,
-          canEdit,
-        };
+        // Preserve per-role permissions exactly as set in the matrix.
+        // Only fall back to purpose-derived defaults for roles that have no row yet.
+        if (existing) return existing;
+        return { roleId: r.id, canView: true, canEdit: defaultCanEdit };
       }),
     };
+  }
+
+  function updatePermission(fieldIdx: number, roleId: string, key: "canView" | "canEdit", value: boolean) {
+    setMapped((prev) =>
+      prev.map((m, i) => {
+        if (i !== fieldIdx) return m;
+        const base = m.permissions?.length
+          ? m.permissions
+          : roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }));
+        const newPerms = base.map((p) => {
+          if (p.roleId !== roleId) return p;
+          if (key === "canEdit" && value) return { ...p, canEdit: true, canView: true };
+          if (key === "canView" && !value) return { ...p, canView: false, canEdit: false };
+          return { ...p, [key]: value };
+        });
+        return { ...m, permissions: newPerms };
+      })
+    );
+  }
+
+  async function handleCreateRole(label: string) {
+    setRoleOperating("creating");
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/roles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed to create role"); return; }
+      const newRole: Role = await res.json();
+      setRoles((prev) => [...prev, newRole]);
+      // Add default permissions for the new role to all existing mapped fields: view=false, edit=false.
+      // Admin must explicitly grant access after creating a role.
+      setMapped((prev) =>
+        prev.map((m) => ({
+          ...m,
+          permissions: [
+            ...(m.permissions ?? roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }))),
+            { roleId: newRole.id, canView: false, canEdit: false },
+          ],
+        }))
+      );
+    } finally {
+      setRoleOperating(null);
+    }
+  }
+
+  async function handleRenameRole(roleId: string, label: string) {
+    setRoleOperating(roleId);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/roles/${roleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed to rename role"); return; }
+      const updated: Role = await res.json();
+      setRoles((prev) => prev.map((r) => (r.id === roleId ? { ...r, label: updated.label } : r)));
+    } finally {
+      setRoleOperating(null);
+    }
+  }
+
+  async function handleDeleteRole(roleId: string) {
+    if (!confirm("Delete this role? This cannot be undone.")) return;
+    setRoleOperating(roleId);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/roles/${roleId}`, { method: "DELETE" });
+      if (!res.ok) { const d = await res.json(); setError(d.error ?? "Failed to delete role"); return; }
+      setRoles((prev) => prev.filter((r) => r.id !== roleId));
+      setMapped((prev) =>
+        prev.map((m) => ({ ...m, permissions: m.permissions?.filter((p) => p.roleId !== roleId) }))
+      );
+    } finally {
+      setRoleOperating(null);
+    }
   }
 
   async function handleSave() {
@@ -809,6 +971,7 @@ export function FieldMappingBuilder({
         return;
       }
       setLastSavedAt(new Date().toLocaleTimeString());
+      setMapped((prev) => prev.map((m) => ({ ...m, isNew: false })));
       router.refresh();
     } catch {
       setError("An error occurred");
@@ -1123,6 +1286,105 @@ export function FieldMappingBuilder({
           })}
         </div>
         </div>
+      </AccordionCard>
+
+      <AccordionCard title="Roles & Permissions" defaultOpen={roles.length > 1}>
+        <p className="mb-3 text-sm text-zinc-600">
+          Define reviewer roles for this cycle, then set per-role field access in the matrix below.{" "}
+          <strong>View</strong> lets the reviewer see the field. <strong>Edit</strong> allows writing
+          to Smartsheet (enabling Edit automatically enables View).
+        </p>
+
+        <div className="mb-4">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Roles</div>
+          <div className="space-y-1.5">
+            {roles.map((role) => (
+              <RoleRow
+                key={role.id}
+                role={role}
+                canDelete={roles.length > 1}
+                operatingOn={roleOperating === role.id}
+                onRename={(label) => handleRenameRole(role.id, label)}
+                onDelete={() => handleDeleteRole(role.id)}
+              />
+            ))}
+          </div>
+          {roles.length < 10 ? (
+            <AddRoleForm loading={roleOperating === "creating"} onCreate={handleCreateRole} />
+          ) : (
+            <p className="mt-2 text-xs text-amber-600">Maximum of 10 roles reached.</p>
+          )}
+        </div>
+
+        {mapped.length > 0 && roles.length > 0 ? (
+          <div className="overflow-x-auto">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Permissions matrix</div>
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="w-48 pb-2 pr-4 text-left text-xs font-medium text-zinc-500">Field</th>
+                  {roles.map((role) => (
+                    <th key={role.id} className="px-3 pb-1 text-center text-xs font-medium text-zinc-700" colSpan={2}>
+                      {role.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="border-b border-zinc-200">
+                  <th />
+                  {roles.map((role) => (
+                    <React.Fragment key={role.id}>
+                      <th className="px-2 pb-1 text-center text-[10px] font-medium uppercase text-zinc-400">View</th>
+                      <th className="px-2 pb-1 text-center text-[10px] font-medium uppercase text-zinc-400">Edit</th>
+                    </React.Fragment>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mapped.map((m, fieldIdx) => {
+                  const fieldPerms = m.permissions?.length
+                    ? m.permissions
+                    : roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }));
+                  const isUnsaved = m.isNew === true;
+                  return (
+                    <tr key={m.fieldKey} className={`border-b border-zinc-100 ${isUnsaved ? "bg-amber-50" : ""}`}>
+                      <td className="py-1.5 pr-4 text-xs text-zinc-700">
+                        <span className="font-medium">{m.displayLabel || m.sourceColumnTitle}</span>
+                        <span className="ml-1 text-zinc-400">({m.purpose})</span>
+                      </td>
+                      {roles.map((role) => {
+                        const perm = fieldPerms.find((p) => p.roleId === role.id) ?? { roleId: role.id, canView: false, canEdit: false };
+                        return (
+                          <React.Fragment key={role.id}>
+                            <td className="px-2 py-1.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={perm.canView}
+                                onChange={(e) => updatePermission(fieldIdx, role.id, "canView", e.target.checked)}
+                                className="rounded border-zinc-300"
+                                title={`${role.label}: view ${m.displayLabel}`}
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={perm.canEdit}
+                                onChange={(e) => updatePermission(fieldIdx, role.id, "canEdit", e.target.checked)}
+                                className="rounded border-zinc-300"
+                                title={`${role.label}: edit ${m.displayLabel}`}
+                              />
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-400">Map columns first to configure permissions.</p>
+        )}
       </AccordionCard>
 
       <AccordionCard title="Layout">

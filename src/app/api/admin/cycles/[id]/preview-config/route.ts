@@ -10,11 +10,11 @@ import {
 } from "@/lib/layout";
 
 /**
- * Returns reviewer config for admin preview. Uses the first role in the cycle
- * so admins can see what a reviewer would see.
+ * Returns reviewer config for admin preview. Accepts optional ?roleId= to simulate
+ * a specific role; falls back to the first role if omitted or invalid.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getSessionUser();
@@ -28,17 +28,22 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { rows: roles } = await query<{ id: string }>(
-    "SELECT id FROM roles WHERE cycle_id = $1 ORDER BY sort_order LIMIT 1",
+  const requestedRoleId = new URL(request.url).searchParams.get("roleId");
+
+  const { rows: allRoles } = await query<{ id: string; key: string; label: string; sort_order: number }>(
+    "SELECT id, key, label, sort_order FROM roles WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
-  const roleId = roles[0]?.id;
-  if (!roleId) {
+  if (allRoles.length === 0) {
     return NextResponse.json(
       { error: "No roles configured. Add at least one role to preview." },
       { status: 400 }
     );
   }
+  const roleId =
+    requestedRoleId && allRoles.some((r) => r.id === requestedRoleId)
+      ? requestedRoleId
+      : allRoles[0]!.id;
 
   const { rows: cycles } = await query<{
     connection_id: string;
@@ -60,6 +65,7 @@ export async function GET(
   const rolePermissions = effectiveConfig.permissions.filter(
     (permission) => permission.role_id === roleId
   );
+
   const viewablePermissionByFieldId = new Map(
     rolePermissions
       .filter((permission) => permission.can_view)
@@ -162,5 +168,7 @@ export async function GET(
     })),
     colors: viewSettings?.colors ?? {},
     pinnedFieldKeys: viewSettings?.pinnedFieldKeys ?? [],
+    roles: allRoles,
+    activeRoleId: roleId,
   });
 }

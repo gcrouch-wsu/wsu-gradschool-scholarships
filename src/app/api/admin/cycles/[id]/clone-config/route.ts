@@ -76,6 +76,12 @@ export async function POST(
       { status: 400 }
     );
   }
+  if (sourceRoles.length > 10) {
+    return NextResponse.json(
+      { error: "Source cycle has more than 10 roles, which exceeds the allowed limit." },
+      { status: 422 }
+    );
+  }
 
   const { rows: sourceFieldConfigs } = await query<{
     id: string;
@@ -180,7 +186,7 @@ export async function POST(
     if (newFcId && newRoleId) {
       await tx(
         "INSERT INTO field_permissions (field_config_id, role_id, can_view, can_edit) VALUES ($1, $2, $3, $4)",
-        [newFcId, newRoleId, p.can_view, p.can_edit]
+        [newFcId, newRoleId, p.can_view || p.can_edit, p.can_edit]
       );
     }
   }

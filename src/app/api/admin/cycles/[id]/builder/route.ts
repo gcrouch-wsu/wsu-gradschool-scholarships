@@ -298,10 +298,12 @@ export async function POST(
     if (perms.length > 0) {
       for (const p of perms) {
         if (!validRoleIds.has(p.roleId)) continue;
+        const canEdit = p.canEdit === true;
+        const canView = p.canView !== false || canEdit; // coerce: can_edit ⇒ can_view
         await tx(
           `INSERT INTO field_permissions (field_config_id, role_id, can_view, can_edit)
            VALUES ($1, $2, $3, $4)`,
-          [fieldConfigId, p.roleId, p.canView !== false, p.canEdit === true]
+          [fieldConfigId, p.roleId, canView, canEdit]
         );
       }
     } else {

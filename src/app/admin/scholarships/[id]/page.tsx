@@ -6,6 +6,7 @@ import { query } from "@/lib/db";
 import { AddCycleForm } from "./AddCycleForm";
 import { DeleteProgramButton } from "./DeleteProgramButton";
 import { ProgramAdminsSection } from "./ProgramAdminsSection";
+import { RenameProgramForm } from "./RenameProgramForm";
 import { DeleteCycleButton } from "./cycles/[cycleId]/DeleteCycleButton";
 
 export default async function ProgramDetailPage({
@@ -59,6 +60,13 @@ export default async function ProgramDetailPage({
           <div>
             <h1 className="text-2xl font-semibold text-zinc-900">{program.name}</h1>
             <p className="text-sm text-zinc-500">{program.slug}</p>
+            {canManage && (
+              <RenameProgramForm
+                programId={id}
+                initialName={program.name}
+                initialDescription={program.description}
+              />
+            )}
           </div>
           <DeleteProgramButton programId={id} programName={program.name} />
         </div>
