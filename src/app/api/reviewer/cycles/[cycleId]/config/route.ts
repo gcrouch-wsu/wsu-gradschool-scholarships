@@ -133,7 +133,7 @@ export async function GET(
       viewSettings?.pinnedFieldKeys ?? []
     ),
     {
-      knownFieldKeys: validFields.map((field) => field.field_key),
+      knownFieldKeys: effectiveConfig.fieldConfigs.map((f) => f.field_key),
       pinnedFieldKeys: viewSettings?.pinnedFieldKeys ?? [],
       requireAllPlaced: false,
       allowedSectionKeys: (viewSections.length > 0 ? viewSections : [{ section_key: "main", label: "Review", sort_order: 0 }]).map((section) => section.section_key),
