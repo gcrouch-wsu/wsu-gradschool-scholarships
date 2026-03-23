@@ -77,6 +77,7 @@ Current migration set:
 - `005_intake_forms.sql`
 - `006_reviewer_row_files.sql`
 - `007_layout_json.sql`
+- `008_reviewer_field_help_text.sql`
 
 Important: deploying code is not enough by itself. New code that depends on new tables or columns still requires the matching SQL migration to be applied to the target database.
 

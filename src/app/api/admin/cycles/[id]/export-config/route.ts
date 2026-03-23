@@ -28,10 +28,11 @@ export async function GET(
     source_column_title: string;
     purpose: string;
     display_label: string;
+    help_text: string | null;
     display_type: string;
     sort_order: number;
   }>(
-    "SELECT field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+    "SELECT field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
   const { rows: permissions } = await query<{

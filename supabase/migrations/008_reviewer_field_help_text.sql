@@ -1,0 +1,2 @@
+ALTER TABLE field_configs
+ADD COLUMN IF NOT EXISTS help_text TEXT;

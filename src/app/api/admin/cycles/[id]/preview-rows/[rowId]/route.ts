@@ -124,6 +124,7 @@ export async function GET(
     sourceColumnId: f.source_column_id,
     purpose: f.purpose,
     displayLabel: f.display_label,
+    helperText: f.help_text ?? null,
     displayType: f.display_type,
     canEdit: f.can_edit,
     sectionKey: fieldIdToSectionKey[f.id] ?? "main",

@@ -8,6 +8,7 @@ export interface ReviewerFieldConfigRecord {
   source_column_title: string;
   purpose: string;
   display_label: string;
+  help_text?: string | null;
   display_type: string;
   sort_order: number;
 }
@@ -160,7 +161,7 @@ export async function getEffectiveReviewerConfig(cycleId: string): Promise<Effec
   }
 
   const { rows: fieldConfigs } = await query<ReviewerFieldConfigRecord>(
-    `SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order
+    `SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order
      FROM field_configs
      WHERE cycle_id = $1
      ORDER BY sort_order`,

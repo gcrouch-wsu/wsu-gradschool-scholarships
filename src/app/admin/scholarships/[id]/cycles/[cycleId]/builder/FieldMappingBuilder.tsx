@@ -164,6 +164,7 @@ interface FieldConfig {
   source_column_title: string;
   purpose: string;
   display_label: string;
+  help_text: string | null;
   display_type: string;
   sort_order: number;
 }
@@ -297,6 +298,7 @@ interface MappedField {
   sourceColumnTitle: string;
   purpose: string;
   displayLabel: string;
+  helperText: string;
   displayType: string;
   sortOrder: number;
   fieldKey: string;
@@ -371,6 +373,11 @@ function LayoutPreview({
         {pinnedFields.map((m) => (
           <div key={m.fieldKey}>
             <span className="block text-[10px] uppercase tracking-wide text-zinc-400">{m.displayLabel}</span>
+            {m.helperText && (
+              <span className="mt-1 block max-w-48 text-[11px] leading-4 text-zinc-500">
+                {m.helperText}
+              </span>
+            )}
             <span className="text-sm font-semibold" style={{ color: colors.headerText }}>
               Sample {m.sourceColumnTitle}
             </span>
@@ -385,6 +392,9 @@ function LayoutPreview({
     return (
       <div key={m.fieldKey} className="border-b border-zinc-100 pb-3 last:border-0">
         <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{m.displayLabel}</span>
+        {m.helperText && (
+          <p className="mt-1 text-xs leading-5 text-zinc-500">{m.helperText}</p>
+        )}
         {m.purpose === "identity" && (
           <div className="mt-0.5 text-xl font-semibold" style={{ color: colors.headerText }}>
             Sample Applicant Name
@@ -756,6 +766,7 @@ export function FieldMappingBuilder({
               sourceColumnTitle: fc.source_column_title,
               purpose: fc.purpose,
               displayLabel: fc.display_label,
+              helperText: fc.help_text ?? "",
               displayType: fc.display_type,
               sortOrder: fc.sort_order,
               fieldKey: fc.field_key,
@@ -796,6 +807,7 @@ export function FieldMappingBuilder({
         sourceColumnTitle: col.title,
         purpose: defaultPurpose,
         displayLabel: col.title,
+        helperText: "",
         displayType: isAttachment ? "attachment_list" : DISPLAY_TYPES[defaultPurpose] ?? "short_text",
         sortOrder: prev.length,
         fieldKey: key,
@@ -992,6 +1004,7 @@ export function FieldMappingBuilder({
               sourceColumnTitle: m.sourceColumnTitle,
               purpose: m.purpose,
               displayLabel: m.displayLabel,
+              helperText: m.helperText,
               displayType: DISPLAY_TYPES[m.purpose] || m.displayType,
               sortOrder: i,
               sectionKey: getFieldSectionKey(layoutDraft, m.fieldKey) ?? m.sectionKey ?? sections[0]?.section_key,
@@ -1183,7 +1196,7 @@ export function FieldMappingBuilder({
                 <span>Type</span>
                 <span className="justify-self-center">Locked</span>
                 <span>Purpose</span>
-                <span>Display label</span>
+                <span>Label & help</span>
                 {usesSections && <span title="Section is assigned via the layout editor above">Section</span>}
                 <span title="Pin this field to the header card — always visible above tabs">Pin</span>
                 <span title="Hide from reviewers when blind review is on">Blind</span>
@@ -1280,13 +1293,22 @@ export function FieldMappingBuilder({
                         })()}
                       </select>
                     </div>
-                    <input
-                      type="text"
-                      value={m.displayLabel}
-                      onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
-                      placeholder="Display label"
-                      className="self-center rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                    />
+                    <div className="grid gap-2 self-center">
+                      <input
+                        type="text"
+                        value={m.displayLabel}
+                        onChange={(e) => updateMapping(idx, { displayLabel: e.target.value })}
+                        placeholder="Display label"
+                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                      />
+                      <textarea
+                        value={m.helperText}
+                        onChange={(e) => updateMapping(idx, { helperText: e.target.value })}
+                        placeholder="Helper text or instructions (optional)"
+                        rows={2}
+                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                      />
+                    </div>
                     {usesSections && (
                       m.pinned ? (
                         <span

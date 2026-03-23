@@ -90,10 +90,11 @@ export async function POST(
     source_column_title: string;
     purpose: string;
     display_label: string;
+    help_text: string | null;
     display_type: string;
     sort_order: number;
   }>(
-    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
     [sourceCycleId]
   );
 
@@ -164,8 +165,8 @@ export async function POST(
   const fieldConfigIdMap = new Map<string, string>();
   for (const fc of sourceFieldConfigs) {
     const { rows } = await tx<{ id: string }>(
-      `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         targetCycleId,
         fc.field_key,
@@ -173,6 +174,7 @@ export async function POST(
         fc.source_column_title ?? "",
         fc.purpose,
         fc.display_label,
+        fc.help_text,
         fc.display_type,
         fc.sort_order,
       ]
@@ -263,10 +265,11 @@ export async function POST(
     source_column_title: string;
     purpose: string;
     display_label: string;
+    help_text: string | null;
     display_type: string;
     sort_order: number;
   }>(
-    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
     [targetCycleId]
   );
   const { rows: snapshotPermissions } = await tx<{

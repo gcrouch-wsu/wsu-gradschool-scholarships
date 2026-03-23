@@ -27,6 +27,7 @@ interface Field {
   sourceColumnId: number;
   purpose: string;
   displayLabel: string;
+  helperText?: string | null;
   displayType: string;
   canEdit: boolean;
   sectionKey?: string;
@@ -57,6 +58,8 @@ export function ReviewerScoreForm({
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [nomineeIds, setNomineeIds] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<{ id: string; name: string; url?: string; source?: string }[]>([]);
+  const [showAttachments, setShowAttachments] = useState(false);
+  const [attachmentHelpText, setAttachmentHelpText] = useState<string | null>(null);
   const [canUploadAttachments, setCanUploadAttachments] = useState(false);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -105,6 +108,8 @@ export function ReviewerScoreForm({
       const configData = await configRes.json();
       const rowData = await rowRes.json();
       const rowsData = rowsRes.ok ? await rowsRes.json() : { rows: [] };
+      setShowAttachments(configData.showAttachments === true);
+      setAttachmentHelpText(configData.attachmentHelpText ?? null);
       await loadAttachments(configData.showAttachments === true);
       setColumnOptions(configData.columnOptions ?? {});
       const fieldsData = rowData.fields ?? [];
@@ -289,6 +294,9 @@ export function ReviewerScoreForm({
     return (
       <div key={f.fieldKey} role="group" aria-labelledby={`label-${f.fieldKey}`}>
         <div id={`label-${f.fieldKey}`} className="text-xs font-medium text-zinc-600">{f.displayLabel}</div>
+        {f.helperText && (
+          <p className="mt-1 text-xs leading-5 text-zinc-500">{f.helperText}</p>
+        )}
         <div className="mt-1 whitespace-pre-wrap text-zinc-900">
           {String(edits[f.sourceColumnId] ?? f.value ?? "")}
         </div>
@@ -299,6 +307,9 @@ export function ReviewerScoreForm({
     return (
       <div key={f.fieldKey}>
         <label className="block text-sm font-medium text-zinc-700">{f.displayLabel}</label>
+        {f.helperText && (
+          <p className="mt-1 text-xs leading-5 text-zinc-500">{f.helperText}</p>
+        )}
         {f.displayType === "score_select" ? (
           <select
             value={String(edits[f.sourceColumnId] ?? f.value ?? "")}
@@ -387,9 +398,12 @@ export function ReviewerScoreForm({
           </div>
         </div>
       )}
-      {(attachments.length > 0 || canUploadAttachments) && (
+      {showAttachments && (
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
           <h2 className="mb-3 font-medium text-zinc-900">Attachments</h2>
+          {attachmentHelpText && (
+            <p className="mb-3 text-sm leading-6 text-zinc-600">{attachmentHelpText}</p>
+          )}
           {canUploadAttachments && (
             <div
               onDragOver={(e) => {
@@ -476,6 +490,11 @@ export function ReviewerScoreForm({
                 <div id={`pinned-label-${f.fieldKey}`} className="text-xs font-medium uppercase tracking-wide text-zinc-600">
                   {f.displayLabel}
                 </div>
+                {f.helperText && (
+                  <div className="mt-1 max-w-48 text-[11px] leading-4 text-zinc-500">
+                    {f.helperText}
+                  </div>
+                )}
                 <div className="text-sm font-semibold" style={{ color: colors.headerText }}>
                   {String(edits[f.sourceColumnId] ?? f.value ?? "—")}
                 </div>

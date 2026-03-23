@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
-import { query, withTransaction } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import {
   buildReviewerLayoutFromFields,
   validateLayoutJson,
@@ -142,8 +142,8 @@ export async function POST(
       const fc = fieldConfigs[i];
       const fieldKey = fc.field_key ?? `field_${i}`;
       const { rows } = await tx<{ id: string }>(
-        `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
         [
           targetCycleId,
           fieldKey,
@@ -151,6 +151,7 @@ export async function POST(
           fc.source_column_title ?? "",
           fc.purpose ?? "metadata",
           fc.display_label ?? fieldKey,
+          typeof fc.help_text === "string" && fc.help_text.trim() ? fc.help_text.trim() : null,
           fc.display_type ?? "short_text",
           fc.sort_order ?? i,
         ]
@@ -233,10 +234,11 @@ export async function POST(
       source_column_title: string;
       purpose: string;
       display_label: string;
+      help_text: string | null;
       display_type: string;
       sort_order: number;
     }>(
-      "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+      "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
       [targetCycleId]
     );
     const { rows: snapshotPermissions } = await tx<{

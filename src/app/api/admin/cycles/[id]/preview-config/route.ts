@@ -122,6 +122,9 @@ export async function GET(
   const showAttachments = fieldConfigs.some(
     (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
   );
+  const attachmentHelpText =
+    fieldConfigs.find((f) => f.purpose === "attachment" || f.display_type === "attachment_list")
+      ?.help_text ?? null;
 
   const viewSettings = viewConfig?.settings_json as {
     colors?: Record<string, string>;
@@ -159,6 +162,7 @@ export async function GET(
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,
+    attachmentHelpText,
     viewType: viewConfig?.view_type ?? "tabbed",
     layoutJson,
     viewSections: viewSections.map((s) => ({

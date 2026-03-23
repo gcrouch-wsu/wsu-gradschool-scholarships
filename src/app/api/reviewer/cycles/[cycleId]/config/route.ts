@@ -109,6 +109,9 @@ export async function GET(
   const showAttachments = fieldConfigs.some(
     (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
   );
+  const attachmentHelpText =
+    fieldConfigs.find((f) => f.purpose === "attachment" || f.display_type === "attachment_list")
+      ?.help_text ?? null;
   const reviewerAttachmentSchema = await getReviewerAttachmentSchemaStatus();
   const canUploadAttachments = reviewerAttachmentSchema.available && showAttachments;
 
@@ -149,6 +152,7 @@ export async function GET(
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,
+    attachmentHelpText,
     canUploadAttachments,
     viewType: viewConfig?.view_type ?? "tabbed",
     layoutJson,

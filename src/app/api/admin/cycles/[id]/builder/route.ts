@@ -66,10 +66,11 @@ export async function GET(
     source_column_title: string;
     purpose: string;
     display_label: string;
+    help_text: string | null;
     display_type: string;
     sort_order: number;
   }>(
-    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
 
@@ -210,6 +211,7 @@ export async function POST(
       sourceColumnTitle: string;
       purpose: string;
       displayLabel: string;
+      helperText?: string | null;
       displayType: string;
       sortOrder: number;
       sectionKey?: string;
@@ -272,8 +274,8 @@ export async function POST(
     const displayType = validDisplayTypes.includes(fc.displayType) ? fc.displayType : "short_text";
 
     const { rows } = await tx<{ id: string }>(
-      `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO field_configs (cycle_id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         cycleId,
@@ -282,6 +284,7 @@ export async function POST(
         fc.sourceColumnTitle ?? "",
         purpose,
         fc.displayLabel,
+        fc.helperText?.trim() ? fc.helperText.trim() : null,
         displayType,
         fc.sortOrder ?? i,
       ]
@@ -367,7 +370,6 @@ export async function POST(
         "SELECT id, field_key FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
         [cycleId]
       );
-      const fieldKeyToId = Object.fromEntries(fcRows.map((r) => [r.field_key, r.id]));
       const fieldKeyToSectionKey = Object.fromEntries(
         layoutValidation.normalized.sections.flatMap((section) =>
           section.rows.flatMap((row) =>
@@ -413,10 +415,11 @@ export async function POST(
     source_column_title: string;
     purpose: string;
     display_label: string;
+    help_text: string | null;
     display_type: string;
     sort_order: number;
   }>(
-    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
+    "SELECT id, field_key, source_column_id, source_column_title, purpose, display_label, help_text, display_type, sort_order FROM field_configs WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
   const { rows: snapshotPermissions } = await tx<{
