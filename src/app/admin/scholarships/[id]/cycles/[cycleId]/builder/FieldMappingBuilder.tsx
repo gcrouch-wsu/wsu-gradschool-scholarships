@@ -1432,6 +1432,13 @@ export function FieldMappingBuilder({
           <strong>View</strong> lets the reviewer see the field. <strong>Edit</strong> allows writing
           to Smartsheet (enabling Edit automatically enables View).
         </p>
+        <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600">
+          <strong>View</strong>: reviewer can see the field and its current value.
+          {" "}
+          <strong>Edit</strong>: reviewer can change the field and save that change back to Smartsheet.
+          {" "}
+          Reviewers need <strong>Edit</strong> to enter ratings or comments.
+        </div>
         <p className="mb-3 text-xs leading-5 text-zinc-500">
           Fields marked <strong>Blind</strong> stay in the matrix so you can keep their underlying
           role permissions configured. Blind fields are hidden for every reviewer role and their

@@ -347,6 +347,25 @@ export function moveDraftRow(
   return next;
 }
 
+export function reorderDraftRow(
+  layout: DraftLayoutJson,
+  sectionKey: string,
+  rowKey: string,
+  targetIndex: number
+): DraftLayoutJson {
+  const next = cloneDraftLayout(layout);
+  const section = next.sections.find((candidate) => candidate.section_key === sectionKey);
+  if (!section) return next;
+  const sourceIndex = section.rows.findIndex((row) => row.row_key === rowKey);
+  if (sourceIndex < 0) return next;
+  if (targetIndex < 0 || targetIndex >= section.rows.length || targetIndex === sourceIndex) {
+    return next;
+  }
+  const [row] = section.rows.splice(sourceIndex, 1);
+  section.rows.splice(targetIndex, 0, row);
+  return next;
+}
+
 export function setDraftRowMode(
   layout: DraftLayoutJson,
   sectionKey: string,
