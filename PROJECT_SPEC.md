@@ -100,11 +100,11 @@ Migrations live in `supabase/migrations/`.
 - Admin dashboard: programs, cycles, connections, users, reviewer assignments, templates
 - **Program and cycle rename:** admins can change a program's `name` and `description` inline from the program detail page and a cycle's display label from the cycle detail page; program slug remains immutable after create
 - Two-tier admin model: platform admin vs program admin
-- Cycle setup: Smartsheet connection, sheet sync, cycle status, blind-review settings, external reviewer options
-- Reviewer builder: column mapping, purposes, blind-review hide flags, optional per-field helper text, multi-role management, per-role view/edit permissions matrix, row-based layout with 1/2/3-up desktop rows, publish/unpublish, version snapshots, import/export/clone, delete/reset
-- Public intake builder: draft/publish/unpublish, versioned snapshots, rich-text instructions, multi-file PDF uploads, delete guard, optional character limits for `short_text` and `long_text`, row-based desktop layout with 1/2/3-up rows
+- Cycle setup: Smartsheet connection, sheet sync, cycle status, external reviewer options
+- Reviewer builder: column mapping, purposes, field-level blind hide flags, optional per-field helper text, multi-role management, per-role view/edit permissions matrix with inline meaning guidance, row-based layout with 1/2/3-up desktop rows and drag row reorder, publish/unpublish, version snapshots, import/export/clone, delete/reset
+- Public intake builder: draft/publish/unpublish, versioned snapshots, rich-text instructions, multi-file PDF uploads, delete guard, optional character limits for `short_text` and `long_text`, row-based desktop layout with 1/2/3-up rows and drag row reorder
 - Public submit workflow: direct Blob uploads, metadata-only submit route, Smartsheet row creation, submission idempotency, schema-drift detection, rate limiting, honeypot
-- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view, reviewer-uploaded attachments, per-role field visibility/editability, helper text/instructions, published-layout rendering from canonical `layout_json`
+- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view, reviewer-uploaded attachments, per-role field visibility/editability, field-level blind hiding that overrides reviewer access at runtime, helper text/instructions, published-layout rendering from canonical `layout_json`
 - Admin preview and export: role-scoped reviewer preview config, merged attachments, ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and app-controlled signed file access
 
@@ -151,7 +151,7 @@ Reviewer roles, field permissions, and role-scoped preview are now shipped on cy
 | **Per-role field mapping** | The reviewer builder exposes a field x role matrix with `can_view` / `can_edit`. Saves preserve explicit per-role overrides rather than collapsing everything back to purpose defaults. |
 | **Permission defaults** | New score/comment fields default to hidden and read-only for all roles. Other new fields default to visible and read-only. Newly added roles default to hidden and read-only on existing fields until the admin grants access. |
 | **Assignment** | Cycle-page assignment links one user to exactly one role on that cycle. The dropdown shows the cycle's current roles. Domain and external-reviewer rules still apply. |
-| **Reviewer runtime** | Live reviewer APIs resolve the effective published config, filter fields by the member's `role_id`, apply blind-review hiding and layout omission, and reject writes to fields the role cannot edit. |
+| **Reviewer runtime** | Live reviewer APIs resolve the effective published config, filter fields by the member's `role_id`, apply field-level blind hiding and layout omission, and reject writes to fields the role cannot edit. Blind-hidden fields are neither viewable nor editable in live reviewer runtime. |
 | **Admin preview** | Admin preview can simulate a selected role so visibility and read-only behavior can be checked before publish. |
 | **Clone / import / export / templates** | Exported configs, imported configs, clone operations, and saved templates include roles plus field permissions. Import merges roles by key and preserves permissions where the target cycle can resolve the referenced field and role. |
 | **Nominee list** | Still cycle-wide. Reviewer roles do not introduce per-row reviewer assignment. |
@@ -184,6 +184,8 @@ Reviewer roles, field permissions, and role-scoped preview are now shipped on cy
 12. Reviewer roles shipped: cycle-scoped role CRUD, per-role permission matrix, role-scoped preview, published-snapshot enforcement, and import/export/clone/template support
 13. Reviewer helper text shipped: optional `help_text` on reviewer fields persists through builder save, preview, live reviewer runtime, import/export, and clone
 14. Intake text-question character limits shipped: optional per-field limits for `short_text` and `long_text` render live counters in the public form and are enforced server-side
+15. Blind-review controls simplified: blind-hidden reviewer fields are configured only in the reviewer builder, and blind always overrides reviewer view/edit access in preview and live runtime
+16. Shared row-layout editor supports drag reorder for both intake and reviewer layouts, with Up/Down controls retained as a fallback
 
 ---
 
@@ -232,13 +234,15 @@ interface SavedLayoutJson {
 | Reviewer persistence | `view_configs.layout_json` -> `config_versions.snapshot_json.layout_json` |
 | Reviewer pinned fields | stored in `layout_json.pinned_field_keys` and rendered outside section rows |
 | Section ordering | array order is canonical; `sort_order` mirrors array index on save |
+| Row reordering | shared row-layout editor supports drag-and-drop row reorder, with Up/Down controls as a fallback |
 | Runtime fallback | malformed rows degrade to safe full-width rendering rather than crashing |
 
 ### Reviewer-specific notes
 
 - Published reviewer configs resolve from the effective published snapshot first.
 - When a snapshot includes `layout_json`, that layout is the canonical source for section ordering and row placement.
-- Blind review can hide fields from the rendered form, but hidden fields should not invalidate the saved layout.
+- Blind-hidden fields are configured per field in the reviewer builder; there is no separate cycle-level blind toggle.
+- Blind-hidden fields can be retained in saved layouts, but they are omitted from rendered reviewer forms at runtime.
 
 ---
 

@@ -192,7 +192,7 @@ Platform admins can see:
    - publish
 7. Build the reviewer-facing form:
    - open **Reviewer intake form**
-   - map columns, arrange layout, save
+   - map columns, set reviewer `View` / `Edit` permissions and any blind-hidden fields, arrange layout, save
    - publish updates
 8. Assign reviewers in **Assigned reviewers**.
 9. Activate the cycle so reviewers can see it.
@@ -231,7 +231,6 @@ Use **Scholarships** to:
 On each cycle page, platform admins can:
 
 - connect and sync the Smartsheet sheet
-- configure blind review
 - build and publish the nomination intake form
 - build and publish the reviewer form
 - assign reviewers
@@ -271,14 +270,15 @@ They cannot:
 5. Configure the **Nomination intake form** if the cycle needs public intake:
    - click **Build intake form** or **Edit intake form**
    - add questions from synced Smartsheet columns
-   - arrange rows and columns
+   - arrange rows and columns, including drag-reordering layout rows
    - save draft
    - publish
    - optionally use **View live form**
 6. Configure the **Reviewer intake form**:
    - open the reviewer form builder
    - map columns and choose reviewer behavior
-   - arrange rows and columns
+   - set reviewer `View` / `Edit` permissions and mark any blind-hidden fields directly in the builder
+   - arrange rows and columns, including drag-reordering layout rows
    - save configuration
    - publish updates
    - use **View live form** to verify the reviewer experience
@@ -290,6 +290,7 @@ They cannot:
 - If Smartsheet columns change, click **Sync columns from Smartsheet** again before editing forms.
 - The nomination intake form and reviewer form are separate.
 - Publishing the reviewer form is separate from publishing the nomination intake form.
+- Blind-hidden reviewer fields are configured only inside the reviewer form builder. There is no separate cycle-level blind toggle.
 - `View live form` on the reviewer side opens the live reviewer experience, not a public URL.
 
 ---
@@ -312,7 +313,7 @@ Key behaviors:
 2. Click **Build intake form**.
 3. Add questions from synced Smartsheet columns for structured data.
 4. Add file-upload questions for PDFs as needed.
-5. Arrange layout in rows.
+5. Arrange layout in rows. Drag row cards to reorder them; Up/Down remains available as a fallback.
 6. Click **Save Draft**.
 7. Click **Publish Form**.
 8. Use **View live form** from the cycle page to verify it.
@@ -327,8 +328,8 @@ Key behaviors:
 
 - it is separate from the public intake form
 - it uses reviewer roles and permissions
-- blind review can hide selected fields
-- it supports row-based layout
+- blind-hidden fields are configured per field inside the reviewer builder and override reviewer access at runtime
+- it supports row-based layout with drag row reorder
 - the published reviewer config is versioned separately
 
 ### Typical reviewer form flow
@@ -336,13 +337,13 @@ Key behaviors:
 1. Open the cycle page.
 2. Go to **Reviewer intake form**.
 3. Map the synced Smartsheet columns to reviewer-facing fields.
-4. Set reviewer visibility/editability.
-5. Arrange the row layout.
+4. Set reviewer visibility/editability and any blind-hidden fields.
+5. Arrange the row layout. Drag rows to reorder them, or use Up/Down for fine adjustment.
 6. Click **Save configuration**.
 7. Click **Publish updates**.
 8. Click **View live form** to verify the live reviewer experience.
 
-If blind review is enabled, verify the live reviewer view before assigning real reviewers.
+If any fields are marked **Blind**, verify the live reviewer view before assigning real reviewers.
 
 ---
 

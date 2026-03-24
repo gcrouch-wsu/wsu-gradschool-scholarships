@@ -18,6 +18,15 @@ const DEFAULT_COLORS: LayoutColors = {
   cardBg: "#ffffff",
 };
 
+function getAutoTextareaRows(value: string): number {
+  const lines = value.split("\n");
+  const estimatedWrappedLines = lines.reduce(
+    (count, line) => count + Math.max(1, Math.ceil(line.length / 90)),
+    0
+  );
+  return Math.min(16, Math.max(4, estimatedWrappedLines));
+}
+
 interface Field {
   fieldKey: string;
   sourceColumnId: number;
@@ -223,9 +232,9 @@ export function PreviewScoreForm({
             onChange={(e) =>
               setEdits((prev) => ({ ...prev, [f.sourceColumnId]: e.target.value }))
             }
-            rows={4}
+            rows={getAutoTextareaRows(String(edits[f.sourceColumnId] ?? f.value ?? ""))}
             placeholder="Enter comments or recommendations..."
-            className="mt-1 block w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+            className="mt-1 block w-full resize-none rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
           />
         )}
       </div>

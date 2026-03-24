@@ -5,8 +5,8 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
 ## Current capabilities
 
 - Admin dashboard for programs, cycles, users, connections, templates, and assignments
-- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, and direct write to Smartsheet rows
-- Reviewer form builder with role-aware field behavior, blind-review hiding, row-based layout, publish/unpublish, and version snapshots
+- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, optional text-question character limits, drag-reorder row layout, and direct write to Smartsheet rows
+- Reviewer form builder with role-aware field behavior, field-level blind hiding, per-role view/edit permissions, optional helper text, drag-reorder row layout, publish/unpublish, and version snapshots
 - Reviewer workflow with progress tracking, Save and Next, row-level attachments, and reviewer-uploaded attachments
 - Admin preview and export tools, including ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and schema-drift protection

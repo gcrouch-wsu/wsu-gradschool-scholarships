@@ -65,6 +65,15 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getLongTextRows(value: string): number {
+  const lines = value.split("\n");
+  const estimatedWrappedLines = lines.reduce(
+    (count, line) => count + Math.max(1, Math.ceil(line.length / 90)),
+    0
+  );
+  return Math.min(20, Math.max(10, estimatedWrappedLines));
+}
+
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [submissionId] = useState(() => crypto.randomUUID());
@@ -398,11 +407,11 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     <textarea
                       id={id}
                       required={field.required}
-                      rows={10}
+                      rows={getLongTextRows(getStringValue(formData[field.field_key]))}
                       maxLength={maxLength}
                       value={getStringValue(formData[field.field_key])}
                       onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
-                      className="mt-1 w-full resize-y rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                      className="mt-1 w-full min-h-[16rem] resize-y rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                     />
                     {maxLength && (
                       <p className="mt-2 text-xs text-zinc-500">
