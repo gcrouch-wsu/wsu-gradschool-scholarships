@@ -55,13 +55,13 @@ describe("schema reconciliation", () => {
       [
         {
           id: "fc-1",
-          source_column_id: 444,
+          source_column_id: "444",
           source_column_title: "Student Name",
           display_label: "Student Name",
         },
         {
           id: "fc-2",
-          source_column_id: 555,
+          source_column_id: "555",
           source_column_title: "Student Name",
           display_label: "Nominee",
         },
@@ -93,7 +93,7 @@ describe("schema reconciliation", () => {
       [
         {
           id: "iff-1",
-          target_column_id: 444,
+          target_column_id: "444",
           target_column_title: "Student Name",
           target_column_type: "TEXT_NUMBER",
           label: "Student Name",
@@ -122,7 +122,7 @@ describe("schema reconciliation", () => {
       [
         {
           id: "iff-1",
-          target_column_id: 444,
+          target_column_id: "444",
           target_column_title: "Department",
           target_column_type: "PICKLIST",
           label: "Department",
@@ -151,7 +151,7 @@ describe("schema reconciliation", () => {
       [
         {
           id: "iff-1",
-          target_column_id: 444,
+          target_column_id: "444",
           target_column_title: "Department",
           target_column_type: "PICKLIST",
           label: "Academic unit",
@@ -171,6 +171,29 @@ describe("schema reconciliation", () => {
         label: "Academic unit",
         field_type: "select",
         settings_json: { options: ["Arts", "Sciences"] },
+      },
+    ]);
+  });
+
+  it("refreshes same-id reviewer mappings when Postgres returns BIGINT ids as strings", () => {
+    const updates = planFieldConfigReconciliation(
+      [
+        {
+          id: "fc-1",
+          source_column_id: "444",
+          source_column_title: "Old Title",
+          display_label: "Old Title",
+        },
+      ],
+      [{ id: 444, title: "New Title", type: "TEXT_NUMBER" }]
+    );
+
+    expect(updates).toEqual([
+      {
+        id: "fc-1",
+        source_column_id: 444,
+        source_column_title: "New Title",
+        display_label: "New Title",
       },
     ]);
   });

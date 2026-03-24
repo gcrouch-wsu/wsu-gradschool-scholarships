@@ -9,14 +9,14 @@ interface SchemaColumn {
 
 interface FieldConfigMappingRow {
   id: string;
-  source_column_id: number;
+  source_column_id: number | string;
   source_column_title: string | null;
   display_label: string;
 }
 
 interface IntakeFieldMappingRow {
   id: string;
-  target_column_id: number | null;
+  target_column_id: number | string | null;
   target_column_title: string | null;
   target_column_type: string | null;
   label: string;
@@ -87,12 +87,12 @@ export function planFieldConfigReconciliation(
   mappings: FieldConfigMappingRow[],
   columns: SchemaColumn[]
 ) {
-  const byId = new Map(columns.map((column) => [column.id, column]));
+  const byId = new Map(columns.map((column) => [String(column.id), column]));
   const uniqueByTitle = buildUniqueTitleMap(columns);
 
   return mappings
     .map((mapping) => {
-      const currentById = byId.get(mapping.source_column_id);
+      const currentById = byId.get(String(mapping.source_column_id));
       if (currentById) {
         if (currentById.title !== (mapping.source_column_title ?? "")) {
           return {
@@ -137,7 +137,7 @@ export function planIntakeFieldReconciliation(
   mappings: IntakeFieldMappingRow[],
   columns: SchemaColumn[]
 ) {
-  const byId = new Map(columns.map((column) => [column.id, column]));
+  const byId = new Map(columns.map((column) => [String(column.id), column]));
   const uniqueByTitle = buildUniqueTitleMap(columns);
 
   return mappings
@@ -145,7 +145,7 @@ export function planIntakeFieldReconciliation(
       if (!mapping.target_column_id && !mapping.target_column_title) return null;
 
       const currentById =
-        typeof mapping.target_column_id === "number" ? byId.get(mapping.target_column_id) : undefined;
+        mapping.target_column_id != null ? byId.get(String(mapping.target_column_id)) : undefined;
       if (currentById) {
         const oldTitle = mapping.target_column_title ?? "";
         const nextFieldType = isIntakeFieldTypeCompatible(mapping.field_type, currentById.type)
