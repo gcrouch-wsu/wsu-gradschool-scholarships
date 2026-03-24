@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/admin";
 import Link from "next/link";
-import { LogoutButton } from "./LogoutButton";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { SessionWarning } from "@/components/SessionWarning";
 
 export default async function AdminLayout({

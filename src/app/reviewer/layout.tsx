@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { canAccessAdmin } from "@/lib/admin";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 import { SessionWarning } from "@/components/SessionWarning";
 
 export default async function ReviewerLayout({
@@ -11,6 +13,7 @@ export default async function ReviewerLayout({
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/change-password");
+  const hasAdminAccess = await canAccessAdmin(user.id, user.is_platform_admin);
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -23,9 +26,17 @@ export default async function ReviewerLayout({
               <p className="text-sm font-semibold tracking-tight text-zinc-900">Scholarship Review</p>
             </div>
           </Link>
-          <Link href="/admin" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
-            Admin
-          </Link>
+          <nav className="flex items-center gap-3">
+            {hasAdminAccess && (
+              <Link href="/admin" className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]">
+                Admin
+              </Link>
+            )}
+            <span className="text-sm text-[var(--wsu-gray)]">
+              {user.first_name} {user.last_name}
+            </span>
+            <LogoutButton className="text-sm text-[var(--wsu-gray)] hover:text-[var(--wsu-crimson)]" />
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">
