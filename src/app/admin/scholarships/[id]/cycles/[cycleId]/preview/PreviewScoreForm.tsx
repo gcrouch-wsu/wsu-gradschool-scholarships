@@ -93,7 +93,7 @@ export function PreviewScoreForm({
         attachments: [],
       };
       if (configData.showAttachments === true) {
-        const attRes = await fetch(`${base}/preview-rows/${rowId}/attachments`);
+        const attRes = await fetch(`${base}/preview-rows/${rowId}/attachments${roleParam}`);
         attachmentsData = attRes.ok ? await attRes.json() : { attachments: [] };
       }
       setShowAttachments(configData.showAttachments === true);

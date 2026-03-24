@@ -4,6 +4,15 @@ import React, { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  adminDangerPanelClass,
+  adminDestructiveButtonClass,
+  adminDestructiveButtonSmClass,
+  adminPrimaryButtonClass,
+  adminPrimaryButtonSmClass,
+  adminSecondaryButtonClass,
+  adminSecondaryButtonSmClass,
+} from "@/components/admin/actionStyles";
 import { RowLayoutEditor } from "@/components/layout/RowLayoutEditor";
 import type { SavedLayoutJson } from "@/lib/layout";
 import type { DraftLayoutJson } from "@/lib/layout-editor";
@@ -191,6 +200,7 @@ function RoleRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(role.label);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   function commit() {
     if (label.trim() && label.trim() !== role.label) onRename(label.trim());
@@ -215,14 +225,45 @@ function RoleRow({
           <button
             type="button"
             onClick={commit}
-            className="inline-flex items-center rounded-md bg-[var(--wsu-crimson)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--wsu-crimson-hover)]"
+            className={adminPrimaryButtonSmClass}
           >
             Save
           </button>
           <button
             type="button"
             onClick={() => { setLabel(role.label); setEditing(false); }}
-            className="inline-flex items-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            className={adminSecondaryButtonSmClass}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (confirmingDelete) {
+    return (
+      <div className={`${adminDangerPanelClass} grid gap-3 md:grid-cols-[minmax(140px,180px)_minmax(0,1fr)_auto] md:items-center`}>
+        <div className="rounded-full bg-white px-3 py-1 text-[11px] font-mono font-medium uppercase tracking-wide text-red-700 ring-1 ring-inset ring-red-200">
+          {role.key}
+        </div>
+        <p className="text-sm font-medium text-red-900">
+          Delete the role &quot;{role.label}&quot;? This cannot be undone.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={operatingOn}
+            className={adminDestructiveButtonSmClass}
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(false)}
+            disabled={operatingOn}
+            className={adminSecondaryButtonSmClass}
           >
             Cancel
           </button>
@@ -243,18 +284,21 @@ function RoleRow({
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
         <button
           type="button"
-          onClick={() => setEditing(true)}
+          onClick={() => {
+            setConfirmingDelete(false);
+            setEditing(true);
+          }}
           disabled={operatingOn}
-          className="inline-flex items-center rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          className={adminSecondaryButtonSmClass}
         >
           Rename
         </button>
         {canDelete && (
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => setConfirmingDelete(true)}
             disabled={operatingOn}
-            className="inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-40"
+            className={adminDestructiveButtonSmClass}
           >
             Delete
           </button>
@@ -285,7 +329,7 @@ function AddRoleForm({ loading, onCreate }: { loading: boolean; onCreate: (label
       <button
         type="submit"
         disabled={loading || !label.trim()}
-        className="inline-flex h-10 items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+        className={adminSecondaryButtonSmClass}
       >
         {loading ? "Adding…" : "+ Add role"}
       </button>
@@ -690,6 +734,7 @@ export function FieldMappingBuilder({
   const [deleting, setDeleting] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [confirmingDeleteConfig, setConfirmingDeleteConfig] = useState(false);
   const historyRef = useRef<MappedField[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
 
@@ -820,11 +865,17 @@ export function FieldMappingBuilder({
   }
 
   function addSection() {
-    const n = sections.length;
-    const section_key = `section_${n}`;
+    const nextSortOrder = sections.length;
+    const existingKeys = new Set(sections.map((section) => section.section_key));
+    let keyIndex = nextSortOrder;
+    let section_key = `section_${keyIndex}`;
+    while (existingKeys.has(section_key)) {
+      keyIndex += 1;
+      section_key = `section_${keyIndex}`;
+    }
     const nextSections = [
       ...sections,
-      { section_key, label: `Section ${n + 1}`, sort_order: n },
+      { section_key, label: `Section ${nextSortOrder + 1}`, sort_order: nextSortOrder },
     ];
     setSections(nextSections);
     setLayoutDraft((prev) => syncDraftLayoutSections(prev, nextSections));
@@ -969,7 +1020,6 @@ export function FieldMappingBuilder({
   }
 
   async function handleDeleteRole(roleId: string) {
-    if (!confirm("Delete this role? This cannot be undone.")) return;
     setRoleOperating(roleId);
     setError("");
     try {
@@ -1035,14 +1085,6 @@ export function FieldMappingBuilder({
   }
 
   async function handleDeleteConfig() {
-    if (
-      !confirm(
-        "Delete this reviewer form? This removes the current reviewer mapping, layout, and saved config versions for this cycle. Smartsheet data will not be deleted."
-      )
-    ) {
-      return;
-    }
-
     setError("");
     setDeleting(true);
     try {
@@ -1054,6 +1096,7 @@ export function FieldMappingBuilder({
         setError(data.error ?? "Failed to delete reviewer form");
         return;
       }
+      setConfirmingDeleteConfig(false);
       router.push(`/admin/scholarships/${programId}/cycles/${cycleId}`);
       router.refresh();
     } catch {
@@ -1073,10 +1116,11 @@ export function FieldMappingBuilder({
   );
 
   const usesSections = ["tabbed", "stacked", "accordion"].includes(viewType);
-  const gridColsBase = "24px minmax(180px,1.35fr) 136px 72px minmax(160px,0.95fr) minmax(220px,1.25fr)";
+  const gridColsBase =
+    "24px minmax(0,1.2fr) minmax(92px,104px) 56px minmax(116px,0.9fr) minmax(220px,1.35fr)";
   const gridColsFull = usesSections
-    ? `${gridColsBase} 116px 84px 84px 88px`
-    : `${gridColsBase} 84px 84px 88px`;
+    ? `${gridColsBase} minmax(92px,108px) 72px 72px 88px`
+    : `${gridColsBase} 72px 72px 88px`;
 
   return (
     <div className="mt-6 space-y-4">
@@ -1186,9 +1230,9 @@ export function FieldMappingBuilder({
         />
         <div className="mt-5 border-t border-zinc-100 pt-5">
           <div className="overflow-x-auto">
-            <div className="min-w-[1180px] space-y-2.5 pb-1">
+            <div className="space-y-2.5 pb-1">
               <div
-                className="grid items-center gap-4 rounded-xl bg-zinc-50 px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500"
+                className="grid items-center gap-3 rounded-xl bg-zinc-50 px-2.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500"
                 style={{ gridTemplateColumns: gridColsFull }}
               >
                 <span aria-hidden />
@@ -1197,9 +1241,27 @@ export function FieldMappingBuilder({
                 <span className="justify-self-center">Locked</span>
                 <span>Purpose</span>
                 <span>Label & help</span>
-                {usesSections && <span title="Section is assigned via the layout editor above">Section</span>}
+                {usesSections && (
+                  <span
+                    className="leading-tight"
+                    title="Section is assigned via the layout editor above"
+                  >
+                    <span className="block">Section</span>
+                    <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                      Set above
+                    </span>
+                  </span>
+                )}
                 <span title="Pin this field to the header card — always visible above tabs">Pin</span>
-                <span title="Hide from reviewers when blind review is on">Blind</span>
+                <span
+                  className="leading-tight"
+                  title="Hide from reviewers when blind review is on"
+                >
+                  <span className="block">Blind</span>
+                  <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                    Hide when on
+                  </span>
+                </span>
                 <span className="justify-self-end">Action</span>
               </div>
               {mapped.map((m, idx) => {
@@ -1212,7 +1274,7 @@ export function FieldMappingBuilder({
                 return (
                   <div
                     key={m.fieldKey}
-                    className={`grid items-start gap-4 rounded-xl border px-3 py-3.5 shadow-sm ${lockedConflict ? "border-amber-300 bg-amber-50/70" : "border-zinc-200 bg-white"}`}
+                    className={`grid items-start gap-3 rounded-xl border px-3 py-3.5 shadow-sm ${lockedConflict ? "border-amber-300 bg-amber-50/70" : "border-zinc-200 bg-white"}`}
                     style={{ gridTemplateColumns: gridCols }}
                   >
                     {lockedConflict && (
@@ -1268,7 +1330,7 @@ export function FieldMappingBuilder({
                         <span className="text-zinc-300">—</span>
                       )}
                     </div>
-                    <div className="self-center">
+                    <div className="min-w-0 self-center">
                       <select
                         value={m.purpose}
                         onChange={(e) =>
@@ -1277,7 +1339,7 @@ export function FieldMappingBuilder({
                             displayType: DISPLAY_TYPES[e.target.value] || m.displayType,
                           })
                         }
-                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                        className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                         title={PURPOSES.find((p) => p.value === m.purpose)?.desc}
                       >
                         {(() => {
@@ -1293,7 +1355,7 @@ export function FieldMappingBuilder({
                         })()}
                       </select>
                     </div>
-                    <div className="grid gap-2 self-center">
+                    <div className="grid min-w-0 gap-2 self-center">
                       <input
                         type="text"
                         value={m.displayLabel}
@@ -1306,7 +1368,7 @@ export function FieldMappingBuilder({
                         onChange={(e) => updateMapping(idx, { helperText: e.target.value })}
                         placeholder="Helper text or instructions (optional)"
                         rows={2}
-                        className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                        className="min-h-[88px] resize-y rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-[var(--wsu-crimson)] focus:outline-none focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                       />
                     </div>
                     {usesSections && (
@@ -1318,15 +1380,20 @@ export function FieldMappingBuilder({
                           Pinned
                         </span>
                       ) : (
-                        <span className="inline-flex min-h-10 items-center rounded-md bg-zinc-100 px-3 text-sm font-medium text-zinc-700" title="Assign sections via the layout editor above">
-                          {sections.find(
-                            (section) =>
-                              section.section_key ===
-                              (getFieldSectionKey(layoutDraft, m.fieldKey) ??
-                                m.sectionKey ??
-                                sections[0]?.section_key)
-                          )?.label ?? "Review"}
-                        </span>
+                        <div className="grid min-w-0 gap-1 self-center">
+                          <span className="inline-flex min-h-10 w-full items-center rounded-md bg-zinc-100 px-3 text-sm font-medium text-zinc-700" title="Assign sections via the layout editor above">
+                            {sections.find(
+                              (section) =>
+                                section.section_key ===
+                                (getFieldSectionKey(layoutDraft, m.fieldKey) ??
+                                  m.sectionKey ??
+                                  sections[0]?.section_key)
+                            )?.label ?? "Review"}
+                          </span>
+                          <span className="text-center text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                            Set above
+                          </span>
+                        </div>
                       )
                     )}
                     <label
@@ -1373,6 +1440,11 @@ export function FieldMappingBuilder({
           Define reviewer roles for this cycle, then set per-role field access in the matrix below.{" "}
           <strong>View</strong> lets the reviewer see the field. <strong>Edit</strong> allows writing
           to Smartsheet (enabling Edit automatically enables View).
+        </p>
+        <p className="mb-3 text-xs leading-5 text-zinc-500">
+          Fields marked <strong>Blind</strong> stay in the matrix so you can keep their underlying
+          role permissions configured. When blind review is ON, those fields are hidden for every
+          reviewer role and their View/Edit checkboxes are disabled below.
         </p>
 
         <div className="mb-4">
@@ -1427,6 +1499,8 @@ export function FieldMappingBuilder({
                     ? m.permissions
                     : roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }));
                   const isUnsaved = m.isNew === true;
+                  const blindOverridesPermissions =
+                    blindReviewEnabled && m.hiddenInBlindReview === true;
                   return (
                     <tr key={m.fieldKey} className={`border-t border-zinc-100 ${isUnsaved ? "bg-amber-50/70" : ""}`}>
                       <td className="px-4 py-3 text-xs text-zinc-700">
@@ -1440,7 +1514,25 @@ export function FieldMappingBuilder({
                               New
                             </span>
                           )}
+                          {m.hiddenInBlindReview && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                                blindReviewEnabled
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-zinc-100 text-zinc-600"
+                              }`}
+                            >
+                              {blindReviewEnabled ? "Hidden while blind review is on" : "Blind-hidden field"}
+                            </span>
+                          )}
                         </div>
+                        {m.hiddenInBlindReview && (
+                          <p className="mt-1 leading-5 text-zinc-500">
+                            {blindReviewEnabled
+                              ? "Blind review is ON, so this field is hidden for all reviewer roles right now."
+                              : "This field will be hidden for all reviewer roles whenever blind review is enabled."}
+                          </p>
+                        )}
                       </td>
                       {roles.map((role) => {
                         const perm = fieldPerms.find((p) => p.roleId === role.id) ?? { roleId: role.id, canView: false, canEdit: false };
@@ -1450,18 +1542,28 @@ export function FieldMappingBuilder({
                               <input
                                 type="checkbox"
                                 checked={perm.canView}
+                                disabled={blindOverridesPermissions}
                                 onChange={(e) => updatePermission(fieldIdx, role.id, "canView", e.target.checked)}
-                                className="h-4 w-4 rounded border-zinc-300"
-                                title={`${role.label}: view ${m.displayLabel}`}
+                                className="h-4 w-4 rounded border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                title={
+                                  blindOverridesPermissions
+                                    ? `${role.label}: hidden while blind review is on`
+                                    : `${role.label}: view ${m.displayLabel}`
+                                }
                               />
                             </td>
                             <td className="px-2 py-3 text-center">
                               <input
                                 type="checkbox"
                                 checked={perm.canEdit}
+                                disabled={blindOverridesPermissions}
                                 onChange={(e) => updatePermission(fieldIdx, role.id, "canEdit", e.target.checked)}
-                                className="h-4 w-4 rounded border-zinc-300"
-                                title={`${role.label}: edit ${m.displayLabel}`}
+                                className="h-4 w-4 rounded border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                title={
+                                  blindOverridesPermissions
+                                    ? `${role.label}: hidden while blind review is on`
+                                    : `${role.label}: edit ${m.displayLabel}`
+                                }
                               />
                             </td>
                           </React.Fragment>
@@ -1535,7 +1637,7 @@ export function FieldMappingBuilder({
           <button
             type="button"
             onClick={() => setColors(DEFAULT_COLORS)}
-            className="mt-2 text-xs text-zinc-400 hover:text-zinc-600 hover:underline"
+            className={`mt-2 ${adminSecondaryButtonSmClass}`}
           >
             Reset to WSU defaults
           </button>
@@ -1552,14 +1654,14 @@ export function FieldMappingBuilder({
             <button
               type="button"
               onClick={addSection}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              className={adminSecondaryButtonSmClass}
             >
               + Add section
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
             {sections.map((s, i) => (
-              <div key={s.section_key} className="flex items-center gap-1 rounded border border-zinc-200 bg-white px-2 py-1">
+              <div key={s.section_key} className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2.5 py-2">
                 <input
                   type="text"
                   value={s.label}
@@ -1571,10 +1673,10 @@ export function FieldMappingBuilder({
                   <button
                     type="button"
                     onClick={() => removeSection(i)}
-                    className="text-xs text-red-600 hover:text-red-700"
+                    className={`${adminDestructiveButtonSmClass} px-2 py-1`}
                     title="Remove section"
                   >
-                    ×
+                    Remove
                   </button>
                 )}
               </div>
@@ -1597,7 +1699,7 @@ export function FieldMappingBuilder({
           type="button"
           onClick={handleSave}
           disabled={saving || deleting}
-          className="rounded bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+          className={adminPrimaryButtonClass}
         >
           {saving ? "Saving…" : "Save configuration"}
         </button>
@@ -1605,25 +1707,58 @@ export function FieldMappingBuilder({
           type="button"
           onClick={undo}
           disabled={!canUndo || deleting}
-          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+          className={adminSecondaryButtonClass}
         >
           Undo
         </button>
         <Link
           href={`/admin/scholarships/${programId}/cycles/${cycleId}`}
-          className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          className={adminSecondaryButtonClass}
         >
           Back to cycle
         </Link>
-        <button
-          type="button"
-          onClick={handleDeleteConfig}
-          disabled={deleting || saving}
-          className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? "Deleting..." : "Delete reviewer form"}
-        </button>
+        {!confirmingDeleteConfig && (
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setConfirmingDeleteConfig(true);
+            }}
+            disabled={deleting || saving}
+            className={adminDestructiveButtonClass}
+          >
+            Delete reviewer form
+          </button>
+        )}
       </div>
+      {confirmingDeleteConfig && (
+        <div className={`mt-3 ${adminDangerPanelClass}`}>
+          <p className="text-sm font-medium text-red-900">
+            Delete this reviewer form? This removes the current reviewer mapping, layout, and saved config versions for this cycle. Smartsheet data will not be deleted.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleDeleteConfig}
+              disabled={deleting || saving}
+              className={adminDestructiveButtonClass}
+            >
+              {deleting ? "Deleting..." : "Delete reviewer form"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingDeleteConfig(false);
+                setError("");
+              }}
+              disabled={deleting}
+              className={adminSecondaryButtonClass}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

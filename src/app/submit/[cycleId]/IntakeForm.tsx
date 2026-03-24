@@ -60,6 +60,11 @@ function getFieldMaxLength(field: Field): number | undefined {
   return parseIntakeTextMaxLength(field.settings_json?.maxLength) ?? undefined;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [submissionId] = useState(() => crypto.randomUUID());
@@ -82,7 +87,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         return res.json();
       })
       .then(setSchema)
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Failed to load form")))
       .finally(() => setLoading(false));
   }, [cycleId]);
 
@@ -155,8 +160,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
           ? [...(current[fieldKey] || []), ...uploadedEntries]
           : uploadedEntries,
       }));
-    } catch (err: any) {
-      setError(`Upload failed: ${err.message}`);
+    } catch (err: unknown) {
+      setError(`Upload failed: ${getErrorMessage(err, "Unexpected error")}`);
     } finally {
       setUploading((current) => ({ ...current, [fieldKey]: false }));
       setDraggingFieldKey((current) => (current === fieldKey ? null : current));
@@ -199,8 +204,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         ...current,
         [fieldKey]: (current[fieldKey] || []).filter((file) => file.blobPathname !== blobPathname),
       }));
-    } catch (err: any) {
-      setError(err.message || "Failed to remove upload");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to remove upload"));
     }
   }
 
@@ -236,8 +241,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
       setSubmitted(true);
       window.scrollTo(0, 0);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Submission failed"));
     } finally {
       setSubmitting(false);
     }
@@ -345,10 +350,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
               <div
                 key={row.row_key}
                 className={
-                  desktopColumns === 3
-                    ? "grid gap-6 md:col-span-2 md:grid-cols-3"
-                    : desktopColumns === 2
-                      ? "grid gap-6 md:col-span-2 md:grid-cols-2"
+                  desktopColumns >= 2
+                    ? "grid gap-6 md:col-span-2 md:grid-cols-2"
                     : "md:col-span-2"
                 }
               >
@@ -360,7 +363,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
             return (
               <div
                 key={field.field_key}
-                className={desktopColumns === 1 ? "md:col-span-2" : ""}
+                className="min-w-0"
               >
                 {(() => {
                   const maxLength = getFieldMaxLength(field);
@@ -368,7 +371,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
                   return (
                     <>
-                <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
+                <label htmlFor={id} className="block text-sm font-medium leading-5 text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}
                 </label>
                 {field.help_text && <p className="mt-1 text-xs text-zinc-500 mb-2">{field.help_text}</p>}
@@ -395,11 +398,11 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     <textarea
                       id={id}
                       required={field.required}
-                      rows={5}
+                      rows={10}
                       maxLength={maxLength}
                       value={getStringValue(formData[field.field_key])}
                       onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
-                      className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                      className="mt-1 w-full resize-y rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                     />
                     {maxLength && (
                       <p className="mt-2 text-xs text-zinc-500">

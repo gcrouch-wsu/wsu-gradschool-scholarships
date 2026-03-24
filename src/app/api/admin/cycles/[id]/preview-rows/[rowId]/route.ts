@@ -5,6 +5,10 @@ import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
+import {
+  getReviewerRoleFields,
+  getVisibleReviewerRoleFields,
+} from "@/lib/reviewer-field-access";
 import { getSheetRows } from "@/lib/smartsheet";
 
 async function getPreviewRowData(cycleId: string, rowId: number, requestedRoleId?: string | null) {
@@ -86,20 +90,14 @@ export async function GET(
   }
 
   const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
-  const rolePermissions = effectiveConfig.permissions.filter(
-    (permission) => permission.role_id === data.roleId
+  const visibleRoleFieldConfigs = getVisibleReviewerRoleFields(
+    getReviewerRoleFields(
+      effectiveConfig.fieldConfigs,
+      effectiveConfig.permissions,
+      data.roleId,
+      effectiveConfig.viewConfig?.settings_json
+    )
   );
-  const viewablePermissionByFieldId = new Map(
-    rolePermissions
-      .filter((permission) => permission.can_view)
-      .map((permission) => [permission.field_config_id, permission])
-  );
-  const fieldConfigs = effectiveConfig.fieldConfigs
-    .filter((fieldConfig) => viewablePermissionByFieldId.has(fieldConfig.id))
-    .map((fieldConfig) => ({
-      ...fieldConfig,
-      can_edit: viewablePermissionByFieldId.get(fieldConfig.id)?.can_edit ?? false,
-    }));
 
   const sectionFields = effectiveConfig.sectionFields;
   const viewSections = effectiveConfig.viewSections;
@@ -109,16 +107,10 @@ export async function GET(
       return [sf.field_config_id, vs?.section_key ?? "main"];
     })
   );
-  const viewSettings = effectiveConfig.viewConfig?.settings_json as {
-    blindReview?: boolean;
-    hiddenFieldKeys?: string[];
-  } | null;
-  const blindReview = viewSettings?.blindReview ?? false;
-  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
 
-  const validConfigs = fieldConfigs
-    .filter((fieldConfig) => liveColumnIds.has(String(fieldConfig.source_column_id)))
-    .filter((fieldConfig) => !blindReview || !hiddenFieldKeys.has(fieldConfig.field_key));
+  const validConfigs = visibleRoleFieldConfigs.filter((fieldConfig) =>
+    liveColumnIds.has(String(fieldConfig.source_column_id))
+  );
   const fields = validConfigs.map((f) => ({
     fieldKey: f.field_key,
     sourceColumnId: f.source_column_id,

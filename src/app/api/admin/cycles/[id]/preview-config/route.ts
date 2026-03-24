@@ -5,6 +5,11 @@ import { getLiveColumnIds } from "@/lib/reviewer";
 import { query } from "@/lib/db";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import {
+  getReviewerRoleFields,
+  getVisibleReviewerRoleFields,
+  isReviewerAttachmentField,
+} from "@/lib/reviewer-field-access";
+import {
   buildReviewerLayoutFromFields,
   readLayoutJsonOrFallback,
 } from "@/lib/layout";
@@ -62,22 +67,14 @@ export async function GET(
   }
 
   const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
-  const rolePermissions = effectiveConfig.permissions.filter(
-    (permission) => permission.role_id === roleId
-  );
-
-  const viewablePermissionByFieldId = new Map(
-    rolePermissions
-      .filter((permission) => permission.can_view)
-      .map((permission) => [permission.field_config_id, permission])
-  );
-  const fieldConfigs = effectiveConfig.fieldConfigs
-    .filter((fieldConfig) => viewablePermissionByFieldId.has(fieldConfig.id))
-    .map((fieldConfig) => ({
-      ...fieldConfig,
-      can_edit: viewablePermissionByFieldId.get(fieldConfig.id)?.can_edit ?? false,
-    }));
   const viewConfig = effectiveConfig.viewConfig;
+  const roleFieldConfigs = getReviewerRoleFields(
+    effectiveConfig.fieldConfigs,
+    effectiveConfig.permissions,
+    roleId,
+    viewConfig?.settings_json
+  );
+  const visibleRoleFieldConfigs = getVisibleReviewerRoleFields(roleFieldConfigs);
   const viewSections = effectiveConfig.viewSections;
   const sectionFields = effectiveConfig.sectionFields;
   const fieldIdToSectionKey = Object.fromEntries(
@@ -105,38 +102,28 @@ export async function GET(
       columnOptions[col.id] = col.options;
   }
 
-  const validFields = fieldConfigs
+  const validFields = visibleRoleFieldConfigs
     .filter(
       (f) =>
-        (f.purpose !== "attachment" && f.display_type !== "attachment_list") &&
+        !isReviewerAttachmentField(f) &&
         liveColumnIds.has(String(f.source_column_id))
     )
     .map((f) => ({
       ...f,
       section_key: fieldIdToSectionKey[f.id] ?? "main",
     }));
-  const validEditableIds = fieldConfigs
+  const validEditableIds = visibleRoleFieldConfigs
     .filter((fieldConfig) => fieldConfig.can_edit && liveColumnIds.has(String(fieldConfig.source_column_id)))
     .map((fieldConfig) => fieldConfig.source_column_id);
 
-  const showAttachments = fieldConfigs.some(
-    (f) => f.purpose === "attachment" || f.display_type === "attachment_list"
-  );
-  const attachmentHelpText =
-    fieldConfigs.find((f) => f.purpose === "attachment" || f.display_type === "attachment_list")
-      ?.help_text ?? null;
+  const visibleAttachmentFields = visibleRoleFieldConfigs.filter(isReviewerAttachmentField);
+  const showAttachments = visibleAttachmentFields.length > 0;
+  const attachmentHelpText = visibleAttachmentFields[0]?.help_text ?? null;
 
   const viewSettings = viewConfig?.settings_json as {
     colors?: Record<string, string>;
     pinnedFieldKeys?: string[];
-    hiddenFieldKeys?: string[];
-    blindReview?: boolean;
   } | null;
-  const blindReview = viewSettings?.blindReview ?? false;
-  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
-  const fieldsForPreview = blindReview
-    ? validFields.filter((field) => !hiddenFieldKeys.has(field.field_key))
-    : validFields;
   const layoutJson = readLayoutJsonOrFallback(
     viewConfig?.layout_json,
     buildReviewerLayoutFromFields(
@@ -158,7 +145,7 @@ export async function GET(
   );
 
   return NextResponse.json({
-    fieldConfigs: fieldsForPreview,
+    fieldConfigs: validFields,
     editableColumnIds: validEditableIds,
     columnOptions,
     showAttachments,

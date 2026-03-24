@@ -8,6 +8,12 @@ import {
   getReviewerAttachmentSchemaStatus,
   MAX_REVIEWER_ATTACHMENT_SIZE_BYTES,
 } from "@/lib/reviewer-attachments";
+import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
+import {
+  getReviewerRoleFields,
+  getVisibleReviewerRoleFields,
+  isReviewerAttachmentField,
+} from "@/lib/reviewer-field-access";
 
 export const runtime = "nodejs";
 
@@ -44,15 +50,19 @@ export async function POST(
     return NextResponse.json({ error: "Not assigned to this cycle" }, { status: 403 });
   }
 
-  const { rows: attachmentFields } = await query<{ id: string }>(
-    `SELECT fc.id
-     FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
-     AND (fc.purpose = 'attachment' OR fc.display_type = 'attachment_list')`,
-    [cycleId, membership[0]!.role_id]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const visibleRoleFieldConfigs = getVisibleReviewerRoleFields(
+    getReviewerRoleFields(
+      effectiveConfig.fieldConfigs,
+      effectiveConfig.permissions,
+      membership[0]!.role_id,
+      effectiveConfig.viewConfig?.settings_json
+    )
   );
-  if (attachmentFields.length === 0) {
+  const canEditAttachments = visibleRoleFieldConfigs.some(
+    (fieldConfig) => isReviewerAttachmentField(fieldConfig) && fieldConfig.can_edit
+  );
+  if (!canEditAttachments) {
     return NextResponse.json(
       { error: "Your role cannot add attachments for this cycle" },
       { status: 403 }

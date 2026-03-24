@@ -5,14 +5,20 @@ import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { createSignedIntakeFileUrl } from "@/lib/intake";
 import { getIntakeSchemaStatus } from "@/lib/intake-schema";
+import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import {
   createSignedReviewerFileUrl,
   getReviewerAttachmentSchemaStatus,
 } from "@/lib/reviewer-attachments";
+import {
+  getReviewerRoleFields,
+  getVisibleReviewerRoleFields,
+  isReviewerAttachmentField,
+} from "@/lib/reviewer-field-access";
 import { getRowAttachments } from "@/lib/smartsheet";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; rowId: string }> }
 ) {
   const user = await getSessionUser();
@@ -31,23 +37,30 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const requestedRoleId = new URL(request.url).searchParams.get("roleId");
   const { rows: roles } = await query<{ id: string }>(
-    "SELECT id FROM roles WHERE cycle_id = $1 ORDER BY sort_order LIMIT 1",
+    "SELECT id FROM roles WHERE cycle_id = $1 ORDER BY sort_order",
     [cycleId]
   );
-  const roleId = roles[0]?.id;
+  const roleId =
+    requestedRoleId && roles.some((role) => role.id === requestedRoleId)
+      ? requestedRoleId
+      : roles[0]?.id;
   if (!roleId) {
     return NextResponse.json({ error: "No roles configured" }, { status: 400 });
   }
 
-  const { rows: attachmentFields } = await query<{ id: string }>(
-    `SELECT fc.id FROM field_configs fc
-     JOIN field_permissions fp ON fp.field_config_id = fc.id
-     WHERE fc.cycle_id = $1 AND fp.role_id = $2 AND fp.can_view = true
-     AND (fc.purpose = 'attachment' OR fc.display_type = 'attachment_list')`,
-    [cycleId, roleId]
+  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
+  const visibleRoleFieldConfigs = getVisibleReviewerRoleFields(
+    getReviewerRoleFields(
+      effectiveConfig.fieldConfigs,
+      effectiveConfig.permissions,
+      roleId,
+      effectiveConfig.viewConfig?.settings_json
+    )
   );
-  if (attachmentFields.length === 0) {
+  const canViewAttachments = visibleRoleFieldConfigs.some(isReviewerAttachmentField);
+  if (!canViewAttachments) {
     return NextResponse.json({ attachments: [] });
   }
 
