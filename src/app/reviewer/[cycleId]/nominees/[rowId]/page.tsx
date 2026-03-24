@@ -3,18 +3,12 @@ import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { getReviewerNominees } from "@/lib/reviewer";
-import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import { ReviewerScoreForm } from "./ReviewerScoreForm";
 
 function getReviewerPageTitle(
   nominees: Awaited<ReturnType<typeof getReviewerNominees>>,
-  rowId: number,
-  blindReview: boolean
+  rowId: number
 ) {
-  const currentIndex = nominees?.findIndex((n) => n.id === rowId) ?? -1;
-  if (blindReview) {
-    return currentIndex >= 0 ? `Applicant ${currentIndex + 1}` : "Review applicant";
-  }
   return nominees?.find((n) => n.id === rowId)?.displayName ?? "Review nominee";
 }
 
@@ -28,11 +22,8 @@ export async function generateMetadata({
   if (!user) return { title: "Review nominee" };
   const rowIdNum = parseInt(rowId, 10);
   if (isNaN(rowIdNum)) return { title: "Review nominee" };
-  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
-  const blindReview =
-    ((effectiveConfig.viewConfig?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
-  return { title: getReviewerPageTitle(nominees, rowIdNum, blindReview) };
+  return { title: getReviewerPageTitle(nominees, rowIdNum) };
 }
 
 export default async function ReviewerNomineePage({
@@ -64,11 +55,8 @@ export default async function ReviewerNomineePage({
   const assignment = rows[0];
   if (!assignment) notFound();
 
-  const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
-  const blindReview =
-    ((effectiveConfig.viewConfig?.settings_json as { blindReview?: boolean } | null)?.blindReview ?? false) === true;
   const nominees = await getReviewerNominees(user.id, cycleId);
-  const displayTitle = getReviewerPageTitle(nominees, rowIdNum, blindReview);
+  const displayTitle = getReviewerPageTitle(nominees, rowIdNum);
 
   return (
     <div>

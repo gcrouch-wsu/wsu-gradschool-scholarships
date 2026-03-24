@@ -7,7 +7,7 @@ import {
 } from "./reviewer-field-access";
 
 describe("reviewer field access helpers", () => {
-  it("hides blind-marked fields and removes edit access when blind review is on", () => {
+  it("hides blind-marked fields and removes edit access", () => {
     const fields = [
       {
         id: "field-1",
@@ -28,7 +28,6 @@ describe("reviewer field access helpers", () => {
     ];
 
     const roleFields = getReviewerRoleFields(fields, permissions, "role-1", {
-      blindReview: true,
       hiddenFieldKeys: ["prospectus"],
     });
 
@@ -42,7 +41,7 @@ describe("reviewer field access helpers", () => {
     expect(getVisibleReviewerRoleFields(roleFields)).toEqual([]);
   });
 
-  it("preserves role editability when blind review is off", () => {
+  it("leaves role editability intact when a field is not blind-hidden", () => {
     const fields = [
       {
         id: "field-1",
@@ -62,10 +61,7 @@ describe("reviewer field access helpers", () => {
       },
     ];
 
-    const roleFields = getReviewerRoleFields(fields, permissions, "role-1", {
-      blindReview: false,
-      hiddenFieldKeys: ["score_1"],
-    });
+    const roleFields = getReviewerRoleFields(fields, permissions, "role-1", {});
 
     expect(roleFields).toEqual([
       expect.objectContaining({
@@ -79,11 +75,9 @@ describe("reviewer field access helpers", () => {
   it("detects attachment fields and reads visibility settings defensively", () => {
     expect(
       readReviewerVisibilitySettings({
-        blindReview: true,
         hiddenFieldKeys: ["field_a", 123, null],
       })
     ).toEqual({
-      blindReview: true,
       hiddenFieldKeys: ["field_a"],
     });
 

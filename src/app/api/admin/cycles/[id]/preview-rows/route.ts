@@ -4,6 +4,7 @@ import { canManageCycle } from "@/lib/admin";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
+import { readReviewerVisibilitySettings } from "@/lib/reviewer-field-access";
 import { getSheetRows } from "@/lib/smartsheet";
 
 export async function GET(
@@ -75,18 +76,22 @@ export async function GET(
       .filter((permission) => permission.can_view)
       .map((permission) => permission.field_config_id)
   );
-  const viewSettings = effectiveConfig.viewConfig?.settings_json as {
-    blindReview?: boolean;
-    hiddenFieldKeys?: string[];
-  } | null;
-  const blindReview = viewSettings?.blindReview ?? false;
-  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
+  const { hiddenFieldKeys } = readReviewerVisibilitySettings(
+    effectiveConfig.viewConfig?.settings_json
+  );
+  const hiddenFieldKeySet = new Set(hiddenFieldKeys);
+  const hideIdentity = effectiveConfig.fieldConfigs.some(
+    (fieldConfig) =>
+      viewableFieldIds.has(fieldConfig.id) &&
+      (fieldConfig.purpose === "identity" || fieldConfig.purpose === "subtitle") &&
+      hiddenFieldKeySet.has(fieldConfig.field_key)
+  );
   const identityFields = effectiveConfig.fieldConfigs
     .filter(
       (fieldConfig) =>
         viewableFieldIds.has(fieldConfig.id) &&
         (fieldConfig.purpose === "identity" || fieldConfig.purpose === "subtitle") &&
-        (!blindReview || !hiddenFieldKeys.has(fieldConfig.field_key))
+        !hiddenFieldKeySet.has(fieldConfig.field_key)
     )
     .map((fieldConfig) => ({
       source_column_id: fieldConfig.source_column_id,
@@ -101,14 +106,13 @@ export async function GET(
     );
   }
 
-  const colIds = identityFields.map((f) => f.source_column_id);
   const nominees = result.rows.map((row, index) => {
     const identity: Record<string, unknown> = {};
     for (const f of identityFields) {
       identity[f.field_key] = row.cells[f.source_column_id] ?? "";
     }
     const firstIdentityValue = Object.values(identity).find((v) => v != null && String(v).trim() !== "");
-    const displayName = blindReview
+    const displayName = hideIdentity
       ? `Applicant ${index + 1}`
       : (identity.name as string) ||
         (identity.title as string) ||

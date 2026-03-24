@@ -368,7 +368,6 @@ function LayoutPreview({
   sections,
   colors,
   layoutJson,
-  blindReviewEnabled,
 }: {
   mapped: MappedField[];
   viewType: string;
@@ -376,12 +375,9 @@ function LayoutPreview({
   sections: ViewSection[];
   colors: LayoutColors;
   layoutJson: SavedLayoutJson;
-  blindReviewEnabled?: boolean;
 }) {
   const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
-  const previewMapped = blindReviewEnabled
-    ? mapped.filter((m) => !m.hiddenInBlindReview)
-    : mapped;
+  const previewMapped = mapped.filter((m) => !m.hiddenInBlindReview);
   const tabList = sections.length > 0
     ? sections
     : [
@@ -705,16 +701,15 @@ export function FieldMappingBuilder({
     columns: Column[];
     fieldConfigs: FieldConfig[];
     roles: Role[];
-    viewConfigs: {
-      view_type: string;
-      layout_json?: SavedLayoutJson | null;
-      settings_json?: {
-        colors?: LayoutColors;
-        pinnedFieldKeys?: string[];
-        hiddenFieldKeys?: string[];
-        blindReview?: boolean;
-      } | null;
-    }[];
+      viewConfigs: {
+        view_type: string;
+        layout_json?: SavedLayoutJson | null;
+        settings_json?: {
+          colors?: LayoutColors;
+          pinnedFieldKeys?: string[];
+          hiddenFieldKeys?: string[];
+        } | null;
+      }[];
     viewSections?: ViewSection[];
     sectionFields?: Array<{ view_section_id: string; field_config_id: string; sort_order: number }>;
   } | null>(null);
@@ -723,7 +718,6 @@ export function FieldMappingBuilder({
   const [viewType, setViewType] = useState("tabbed");
   const [colors, setColors] = useState<LayoutColors>(DEFAULT_COLORS);
   const [purposeOverrides, setPurposeOverrides] = useState<Record<string, PurposeOverride>>({});
-  const [blindReviewEnabled, setBlindReviewEnabled] = useState(false);
   const [layoutDraft, setLayoutDraft] = useState<DraftLayoutJson>(() =>
     createDraftLayout(null, [{ section_key: "main", label: "Review", sort_order: 0 }])
   );
@@ -766,7 +760,6 @@ export function FieldMappingBuilder({
           pinnedFieldKeys = settings?.pinnedFieldKeys ?? [];
           hiddenFieldKeys = settings?.hiddenFieldKeys ?? [];
           if (settings?.purposeOverrides) setPurposeOverrides(settings.purposeOverrides);
-          setBlindReviewEnabled(settings?.blindReview === true);
         }
         if (d.viewSections?.length > 0) {
           const nextSections = d.viewSections
@@ -1157,11 +1150,9 @@ export function FieldMappingBuilder({
         <p className="mb-3 text-sm text-zinc-600">
           Customize purpose labels and descriptions. Mark purposes as <strong>editable</strong> to allow reviewers to change values (writes to Smartsheet). If a purpose is editable, all roles can edit fields with that purpose.
         </p>
-        <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${blindReviewEnabled ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
-          Blind review is <strong>{blindReviewEnabled ? "ON" : "OFF"}</strong>.
-          {blindReviewEnabled
-            ? " Only columns marked Hide will be hidden from reviewers."
-            : " No columns are hidden unless you enable blind review on the cycle page."}
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Fields marked <strong>Blind</strong> are hidden from all reviewers in preview and live review.
+          Use Blind on identity fields to anonymize the reviewer experience.
         </div>
         <div className="mb-4 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-3 sm:grid-cols-2">
           {PURPOSES.map((p) => (
@@ -1253,15 +1244,15 @@ export function FieldMappingBuilder({
                   </span>
                 )}
                 <span title="Pin this field to the header card — always visible above tabs">Pin</span>
-                <span
-                  className="leading-tight"
-                  title="Hide from reviewers when blind review is on"
-                >
-                  <span className="block">Blind</span>
-                  <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
-                    Hide when on
+                  <span
+                    className="leading-tight"
+                    title="Hide this field from reviewers"
+                  >
+                    <span className="block">Blind</span>
+                    <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                      Hide field
+                    </span>
                   </span>
-                </span>
                 <span className="justify-self-end">Action</span>
               </div>
               {mapped.map((m, idx) => {
@@ -1410,7 +1401,7 @@ export function FieldMappingBuilder({
                     </label>
                     <label
                       className="flex min-h-10 cursor-pointer items-center justify-center gap-2 self-center rounded-md border border-zinc-200 bg-zinc-50 px-2.5"
-                      title="Hide this field from reviewers when blind review is enabled"
+                      title="Hide this field from reviewers"
                     >
                       <input
                         type="checkbox"
@@ -1443,8 +1434,8 @@ export function FieldMappingBuilder({
         </p>
         <p className="mb-3 text-xs leading-5 text-zinc-500">
           Fields marked <strong>Blind</strong> stay in the matrix so you can keep their underlying
-          role permissions configured. When blind review is ON, those fields are hidden for every
-          reviewer role and their View/Edit checkboxes are disabled below.
+          role permissions configured. Blind fields are hidden for every reviewer role and their
+          View/Edit checkboxes are disabled below.
         </p>
 
         <div className="mb-4">
@@ -1499,8 +1490,7 @@ export function FieldMappingBuilder({
                     ? m.permissions
                     : roles.map((r) => ({ roleId: r.id, canView: true, canEdit: isPurposeEditable(m.purpose) }));
                   const isUnsaved = m.isNew === true;
-                  const blindOverridesPermissions =
-                    blindReviewEnabled && m.hiddenInBlindReview === true;
+                  const blindOverridesPermissions = m.hiddenInBlindReview === true;
                   return (
                     <tr key={m.fieldKey} className={`border-t border-zinc-100 ${isUnsaved ? "bg-amber-50/70" : ""}`}>
                       <td className="px-4 py-3 text-xs text-zinc-700">
@@ -1516,21 +1506,15 @@ export function FieldMappingBuilder({
                           )}
                           {m.hiddenInBlindReview && (
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                                blindReviewEnabled
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-zinc-100 text-zinc-600"
-                              }`}
+                              className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800"
                             >
-                              {blindReviewEnabled ? "Hidden while blind review is on" : "Blind-hidden field"}
+                              Hidden from reviewers
                             </span>
                           )}
                         </div>
                         {m.hiddenInBlindReview && (
                           <p className="mt-1 leading-5 text-zinc-500">
-                            {blindReviewEnabled
-                              ? "Blind review is ON, so this field is hidden for all reviewer roles right now."
-                              : "This field will be hidden for all reviewer roles whenever blind review is enabled."}
+                            This field is hidden for all reviewer roles until Blind is turned off.
                           </p>
                         )}
                       </td>
@@ -1547,7 +1531,7 @@ export function FieldMappingBuilder({
                                 className="h-4 w-4 rounded border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 title={
                                   blindOverridesPermissions
-                                    ? `${role.label}: hidden while blind review is on`
+                                    ? `${role.label}: hidden because this field is marked blind`
                                     : `${role.label}: view ${m.displayLabel}`
                                 }
                               />
@@ -1561,7 +1545,7 @@ export function FieldMappingBuilder({
                                 className="h-4 w-4 rounded border-zinc-300 disabled:cursor-not-allowed disabled:opacity-40"
                                 title={
                                   blindOverridesPermissions
-                                    ? `${role.label}: hidden while blind review is on`
+                                    ? `${role.label}: hidden because this field is marked blind`
                                     : `${role.label}: edit ${m.displayLabel}`
                                 }
                               />

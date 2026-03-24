@@ -329,7 +329,7 @@ export async function POST(
     [cycleId]
   );
   const existingSettings = (existingVc[0]?.settings_json as Record<string, unknown>) ?? {};
-  const preserveKeys = ["blindReview"];
+  const preserveKeys: string[] = [];
   const preserved = Object.fromEntries(
     preserveKeys.filter((k) => existingSettings[k] !== undefined).map((k) => [k, existingSettings[k]])
   );

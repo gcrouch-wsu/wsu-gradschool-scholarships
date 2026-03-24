@@ -4,6 +4,7 @@
 import { query } from "./db";
 import { decrypt } from "./encryption";
 import { getEffectiveReviewerConfig } from "./reviewer-config";
+import { readReviewerVisibilitySettings } from "./reviewer-field-access";
 import { getSheetRows, getSheetSchema } from "./smartsheet";
 
 /** Fetch live column IDs from Smartsheet for a cycle. Returns null if fetch fails. Uses strings to avoid BIGINT/Number mismatch. */
@@ -78,18 +79,22 @@ export async function getReviewerNominees(
       .filter((permission) => permission.can_view)
       .map((permission) => permission.field_config_id)
   );
-  const viewSettings = effectiveConfig.viewConfig?.settings_json as {
-    blindReview?: boolean;
-    hiddenFieldKeys?: string[];
-  } | null;
-  const blindReview = viewSettings?.blindReview ?? false;
-  const hiddenFieldKeys = new Set(viewSettings?.hiddenFieldKeys ?? []);
+  const { hiddenFieldKeys } = readReviewerVisibilitySettings(
+    effectiveConfig.viewConfig?.settings_json
+  );
+  const hiddenFieldKeySet = new Set(hiddenFieldKeys);
+  const hideIdentity = effectiveConfig.fieldConfigs.some(
+    (fieldConfig) =>
+      viewableFieldIds.has(fieldConfig.id) &&
+      (fieldConfig.purpose === "identity" || fieldConfig.purpose === "subtitle") &&
+      hiddenFieldKeySet.has(fieldConfig.field_key)
+  );
   const identityFields = effectiveConfig.fieldConfigs
     .filter(
       (fieldConfig) =>
         viewableFieldIds.has(fieldConfig.id) &&
         (fieldConfig.purpose === "identity" || fieldConfig.purpose === "subtitle") &&
-        (!blindReview || !hiddenFieldKeys.has(fieldConfig.field_key))
+        !hiddenFieldKeySet.has(fieldConfig.field_key)
     )
     .map((fieldConfig) => ({
       source_column_id: fieldConfig.source_column_id,
@@ -107,7 +112,7 @@ export async function getReviewerNominees(
     const firstIdentityValue = Object.values(identity).find(
       (value) => value != null && String(value).trim() !== ""
     );
-    const displayName = blindReview
+    const displayName = hideIdentity
       ? `Applicant ${index + 1}`
       : (identity.name as string) ||
         (identity.title as string) ||

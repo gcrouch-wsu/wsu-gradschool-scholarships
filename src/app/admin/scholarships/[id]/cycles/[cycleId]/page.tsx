@@ -7,7 +7,6 @@ import { ApplyTemplateForm } from "./ApplyTemplateForm";
 import { CloneConfigForm } from "./CloneConfigForm";
 import { ExportImportConfig } from "./ExportImportConfig";
 import { CycleSheetConfig } from "./CycleSheetConfig";
-import { BlindReviewToggle } from "./BlindReviewToggle";
 import { CycleStatusToggle } from "./CycleStatusToggle";
 import { ExternalReviewersToggle } from "./ExternalReviewersToggle";
 import { PublishConfigButton } from "./PublishConfigButton";
@@ -152,10 +151,6 @@ export default async function CycleDetailPage({
     [cycleId]
   );
 
-  const { rows: viewConfigs } = await query<{ settings_json: unknown }>(
-    "SELECT settings_json FROM view_configs WHERE cycle_id = $1 LIMIT 1",
-    [cycleId]
-  );
   const { rows: fieldConfigs } = await query<{ id: string }>(
     "SELECT id FROM field_configs WHERE cycle_id = $1 LIMIT 1",
     [cycleId]
@@ -186,8 +181,6 @@ export default async function CycleDetailPage({
     intakeForm = intakeForms[0];
   }
 
-  const viewSettings = viewConfigs[0]?.settings_json as { blindReview?: boolean } | null;
-  const blindReview = viewSettings?.blindReview ?? false;
   const isCycleActive = cycle.status === "active";
   const reviewerFormStatus =
     cycleWithPublished[0]?.published_config_version_id
@@ -228,13 +221,6 @@ export default async function CycleDetailPage({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-4">
           <CycleStatusToggle cycleId={cycleId} status={cycle.status} />
-          {viewConfigs.length > 0 ? (
-            <BlindReviewToggle cycleId={cycleId} blindReview={blindReview} />
-          ) : (
-            <span className="text-sm text-zinc-500" title="Configure reviewer form first">
-              Blind review (configure reviewer form first)
-            </span>
-          )}
           <ExternalReviewersToggle
             cycleId={cycleId}
             allowExternalReviewers={cycle.allow_external_reviewers}

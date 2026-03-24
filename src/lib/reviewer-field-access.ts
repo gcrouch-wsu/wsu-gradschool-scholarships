@@ -9,7 +9,6 @@ type ReviewerFieldLike = Pick<
 >;
 
 export interface ReviewerVisibilitySettings {
-  blindReview: boolean;
   hiddenFieldKeys: string[];
 }
 
@@ -23,16 +22,14 @@ export function readReviewerVisibilitySettings(
   settingsJson: unknown
 ): ReviewerVisibilitySettings {
   if (!settingsJson || typeof settingsJson !== "object") {
-    return { blindReview: false, hiddenFieldKeys: [] };
+    return { hiddenFieldKeys: [] };
   }
 
   const settings = settingsJson as {
-    blindReview?: unknown;
     hiddenFieldKeys?: unknown;
   };
 
   return {
-    blindReview: settings.blindReview === true,
     hiddenFieldKeys: Array.isArray(settings.hiddenFieldKeys)
       ? settings.hiddenFieldKeys.filter(
           (fieldKey): fieldKey is string => typeof fieldKey === "string"
@@ -47,8 +44,7 @@ export function getReviewerRoleFields<TField extends ReviewerFieldLike>(
   roleId: string,
   settingsJson: unknown
 ): ReviewerEffectiveRoleField<TField>[] {
-  const { blindReview, hiddenFieldKeys } =
-    readReviewerVisibilitySettings(settingsJson);
+  const { hiddenFieldKeys } = readReviewerVisibilitySettings(settingsJson);
   const hiddenFieldKeySet = new Set(hiddenFieldKeys);
   const permissionByFieldId = new Map(
     permissions
@@ -65,8 +61,7 @@ export function getReviewerRoleFields<TField extends ReviewerFieldLike>(
       return [];
     }
 
-    const hiddenByBlindReview =
-      blindReview && hiddenFieldKeySet.has(fieldConfig.field_key);
+    const hiddenByBlindReview = hiddenFieldKeySet.has(fieldConfig.field_key);
 
     return [
       {
