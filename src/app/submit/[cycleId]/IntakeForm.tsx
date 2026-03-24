@@ -5,6 +5,10 @@ import { put } from "@vercel/blob/client";
 import { sanitizeRichTextHtml } from "@/lib/rich-text";
 import type { SavedLayoutJson } from "@/lib/layout";
 import { bindFieldsToLayout, getBoundRowDesktopColumnCount } from "@/lib/layout-runtime";
+import {
+  isIntakeTextFieldType,
+  parseIntakeTextMaxLength,
+} from "@/lib/intake-settings";
 
 interface Field {
   field_key: string;
@@ -49,6 +53,11 @@ function getSelectOptions(field: Field): string[] {
   const options = field.settings_json?.options;
   if (!Array.isArray(options)) return [];
   return options.filter((option): option is string => typeof option === "string");
+}
+
+function getFieldMaxLength(field: Field): number | undefined {
+  if (!isIntakeTextFieldType(field.field_type)) return undefined;
+  return parseIntakeTextMaxLength(field.settings_json?.maxLength) ?? undefined;
 }
 
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
@@ -353,29 +362,51 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                 key={field.field_key}
                 className={desktopColumns === 1 ? "md:col-span-2" : ""}
               >
+                {(() => {
+                  const maxLength = getFieldMaxLength(field);
+                  const currentLength = getStringValue(formData[field.field_key]).length;
+
+                  return (
+                    <>
                 <label htmlFor={id} className="block text-sm font-medium text-zinc-700">
                   {field.label} {field.required && <span className="text-red-500">*</span>}
                 </label>
                 {field.help_text && <p className="mt-1 text-xs text-zinc-500 mb-2">{field.help_text}</p>}
 
                 {field.field_type === "short_text" || field.field_type === "email" || field.field_type === "number" || field.field_type === "date" ? (
-                  <input
-                    type={field.field_type === "email" ? "email" : field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
-                    id={id}
-                    required={field.required}
-                    value={getStringValue(formData[field.field_key])}
-                    onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                  />
+                  <>
+                    <input
+                      type={field.field_type === "email" ? "email" : field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
+                      id={id}
+                      required={field.required}
+                      maxLength={field.field_type === "short_text" ? maxLength : undefined}
+                      value={getStringValue(formData[field.field_key])}
+                      onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                    />
+                    {field.field_type === "short_text" && maxLength && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        {currentLength}/{maxLength} characters
+                      </p>
+                    )}
+                  </>
                 ) : field.field_type === "long_text" ? (
-                  <textarea
-                    id={id}
-                    required={field.required}
-                    rows={5}
-                    value={getStringValue(formData[field.field_key])}
-                    onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
-                    className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                  />
+                  <>
+                    <textarea
+                      id={id}
+                      required={field.required}
+                      rows={5}
+                      maxLength={maxLength}
+                      value={getStringValue(formData[field.field_key])}
+                      onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                    />
+                    {maxLength && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        {currentLength}/{maxLength} characters
+                      </p>
+                    )}
+                  </>
                 ) : field.field_type === "select" ? (
                   <select
                     id={id}
@@ -471,6 +502,9 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                     )}
                   </div>
                 ) : null}
+                    </>
+                  );
+                })()}
               </div>
             );
                 })}

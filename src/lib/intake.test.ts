@@ -6,6 +6,7 @@ import {
   hashIp,
   processSubmission,
   sanitizeBlobFilename,
+  validateSubmissionPayload,
   verifySignedIntakeFileUrl,
 } from "./intake";
 
@@ -102,8 +103,7 @@ describe("intake helpers", () => {
     });
 
     it("returns error if over limit for upload-token", async () => {
-      const { query } = await import("./db");
-      (query as any).mockImplementation((sql: string) => {
+      queryMock.mockImplementation((sql: string) => {
         if (sql.includes("SELECT count(*)")) {
           return Promise.resolve({ rows: [{ count: "11" }] });
         }
@@ -334,6 +334,157 @@ describe("intake helpers", () => {
       expect(
         queryMock.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO intake_submission_files")).length
       ).toBe(2);
+    });
+  });
+
+  describe("validateSubmissionPayload", () => {
+    it("rejects text input over the configured character limit", async () => {
+      const result = await validateSubmissionPayload({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        submitterEmail: "staff@wsu.edu",
+        snapshot: {
+          title: "Nomination Form",
+          fields: [
+            {
+              field_key: "nominee_statement",
+              label: "Nominee statement",
+              field_type: "short_text",
+              required: true,
+              settings_json: { maxLength: 5 },
+            },
+          ],
+        },
+        fields: {
+          nominee_statement: "Too long",
+        },
+        files: [],
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Field "Nominee statement" must be 5 characters or fewer',
+      });
+    });
+
+    it("accepts text input exactly at the configured limit", async () => {
+      const result = await validateSubmissionPayload({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        submitterEmail: "staff@wsu.edu",
+        snapshot: {
+          title: "Nomination Form",
+          fields: [
+            {
+              field_key: "nominee_statement",
+              label: "Nominee statement",
+              field_type: "short_text",
+              required: true,
+              settings_json: { maxLength: 5 },
+            },
+          ],
+        },
+        fields: {
+          nominee_statement: "12345",
+        },
+        files: [],
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        normalizedFields: { nominee_statement: "12345" },
+        normalizedFiles: [],
+      });
+    });
+
+    it("rejects long_text input over the configured character limit", async () => {
+      const result = await validateSubmissionPayload({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        submitterEmail: "staff@wsu.edu",
+        snapshot: {
+          title: "Nomination Form",
+          fields: [
+            {
+              field_key: "nomination_summary",
+              label: "Nomination summary",
+              field_type: "long_text",
+              required: true,
+              settings_json: { maxLength: 10 },
+            },
+          ],
+        },
+        fields: {
+          nomination_summary: "12345678901",
+        },
+        files: [],
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Field "Nomination summary" must be 10 characters or fewer',
+      });
+    });
+
+    it("accepts text input with no configured character limit", async () => {
+      const result = await validateSubmissionPayload({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        submitterEmail: "staff@wsu.edu",
+        snapshot: {
+          title: "Nomination Form",
+          fields: [
+            {
+              field_key: "nominee_statement",
+              label: "Nominee statement",
+              field_type: "short_text",
+              required: true,
+              settings_json: {},
+            },
+          ],
+        },
+        fields: {
+          nominee_statement: "This answer can be arbitrarily long because no limit is configured.",
+        },
+        files: [],
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        normalizedFields: {
+          nominee_statement: "This answer can be arbitrarily long because no limit is configured.",
+        },
+        normalizedFiles: [],
+      });
+    });
+
+    it("fails closed when the stored character limit configuration is invalid", async () => {
+      const result = await validateSubmissionPayload({
+        cycleId: "cycle-1",
+        submissionId: "submission-1",
+        submitterEmail: "staff@wsu.edu",
+        snapshot: {
+          title: "Nomination Form",
+          fields: [
+            {
+              field_key: "nominee_statement",
+              label: "Nominee statement",
+              field_type: "short_text",
+              required: true,
+              settings_json: { maxLength: 0 },
+            },
+          ],
+        },
+        fields: {
+          nominee_statement: "abc",
+        },
+        files: [],
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Field "Nominee statement" has an invalid character limit configuration',
+      });
     });
   });
 });

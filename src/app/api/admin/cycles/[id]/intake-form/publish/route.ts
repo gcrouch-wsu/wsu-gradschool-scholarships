@@ -8,6 +8,12 @@ import {
   INTAKE_ALLOWED_FIELD_TYPES,
 } from "@/lib/intake";
 import {
+  hasConfiguredIntakeTextMaxLength,
+  isIntakeTextFieldType,
+  MAX_INTAKE_TEXT_CHARACTER_LIMIT,
+  parseIntakeTextMaxLength,
+} from "@/lib/intake-settings";
+import {
   buildIntakeLayoutFromFields,
   validateLayoutJson,
 } from "@/lib/layout";
@@ -74,6 +80,16 @@ export async function POST(
   for (const f of fields) {
     if (!(INTAKE_ALLOWED_FIELD_TYPES as readonly string[]).includes(f.field_type)) {
       return NextResponse.json({ error: `Field "${f.label}" uses unsupported type ${f.field_type}` }, { status: 400 });
+    }
+    if (isIntakeTextFieldType(f.field_type)) {
+      const rawMaxLength = f.settings_json?.maxLength;
+      const maxLength = parseIntakeTextMaxLength(rawMaxLength);
+      if (hasConfiguredIntakeTextMaxLength(rawMaxLength) && maxLength === null) {
+        return NextResponse.json(
+          { error: `Field "${f.label}" must use a character limit between 1 and ${MAX_INTAKE_TEXT_CHARACTER_LIMIT}` },
+          { status: 400 }
+        );
+      }
     }
     if (f.field_type === "file") {
       continue;

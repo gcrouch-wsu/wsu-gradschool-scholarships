@@ -8,6 +8,12 @@ import {
   INTAKE_ALLOWED_FIELD_TYPES,
 } from "@/lib/intake";
 import {
+  hasConfiguredIntakeTextMaxLength,
+  isIntakeTextFieldType,
+  MAX_INTAKE_TEXT_CHARACTER_LIMIT,
+  parseIntakeTextMaxLength,
+} from "@/lib/intake-settings";
+import {
   buildIntakeLayoutFromFields,
   validateLayoutJson,
 } from "@/lib/layout";
@@ -17,6 +23,90 @@ import {
 } from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
+
+interface SanitizedFieldInput {
+  field_key: string;
+  label: string;
+  help_text?: string | null;
+  field_type: string;
+  required?: boolean;
+  sort_order?: number | null;
+  target_column_id?: number | null;
+  target_column_title?: string | null;
+  target_column_type?: string | null;
+  settings_json: Record<string, unknown>;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeFieldSettings(field: {
+  field_key: string;
+  label: string;
+  field_type: string;
+  settings_json?: unknown;
+}) {
+  const settings = isPlainObject(field.settings_json) ? field.settings_json : {};
+
+  if (field.field_type === "file") {
+    if (settings.multiple !== undefined && typeof settings.multiple !== "boolean") {
+      return {
+        ok: false as const,
+        error: `File field "${field.label}" has an invalid multiple-files setting`,
+      };
+    }
+    return {
+      ok: true as const,
+      settings: settings.multiple === true ? { multiple: true } : {},
+    };
+  }
+
+  if (field.field_type === "select") {
+    const options = Array.isArray(settings.options)
+      ? settings.options.filter(
+          (option: unknown): option is string =>
+            typeof option === "string" && option.trim() !== ""
+        )
+      : [];
+    if (options.length === 0) {
+      return {
+        ok: false as const,
+        error: `Select field "${field.label}" must define at least one option`,
+      };
+    }
+    if (new Set(options).size !== options.length) {
+      return {
+        ok: false as const,
+        error: `Select field "${field.label}" contains duplicate options`,
+      };
+    }
+    return {
+      ok: true as const,
+      settings: { options },
+    };
+  }
+
+  if (isIntakeTextFieldType(field.field_type)) {
+    const rawMaxLength = settings.maxLength;
+    const maxLength = parseIntakeTextMaxLength(rawMaxLength);
+    if (hasConfiguredIntakeTextMaxLength(rawMaxLength) && maxLength === null) {
+      return {
+        ok: false as const,
+        error: `Field "${field.label}" must use a character limit between 1 and ${MAX_INTAKE_TEXT_CHARACTER_LIMIT}`,
+      };
+    }
+    return {
+      ok: true as const,
+      settings: maxLength === null ? {} : { maxLength },
+    };
+  }
+
+  return {
+    ok: true as const,
+    settings: {},
+  };
+}
 
 /**
  * PUT: Replace all fields (Bulk Save)
@@ -58,6 +148,7 @@ export async function PUT(
   // Validate fields against the locked v1 builder rules.
   const keys = new Set<string>();
   const mappedColumns = new Set<string>();
+  const sanitizedFields: SanitizedFieldInput[] = [];
   for (const f of fields) {
     if (!f.field_key || !f.label || !f.field_type) {
       return NextResponse.json({ error: "field_key, label, and field_type are required" }, { status: 400 });
@@ -75,9 +166,6 @@ export async function PUT(
       if (f.target_column_id || f.target_column_title || f.target_column_type) {
         return NextResponse.json({ error: `File field "${f.label}" cannot map directly to a Smartsheet column` }, { status: 400 });
       }
-      if (f.settings_json?.multiple !== undefined && typeof f.settings_json.multiple !== "boolean") {
-        return NextResponse.json({ error: `File field "${f.label}" has an invalid multiple-files setting` }, { status: 400 });
-      }
     } else {
       if (!f.target_column_id || !f.target_column_title || !f.target_column_type) {
         return NextResponse.json({ error: `Field "${f.label}" is missing a target column mapping` }, { status: 400 });
@@ -91,25 +179,22 @@ export async function PUT(
       }
       mappedColumns.add(mappedColumnKey);
     }
-
-    if (f.field_type === "select") {
-      const options = Array.isArray(f.settings_json?.options)
-        ? f.settings_json.options.filter((option: unknown): option is string => typeof option === "string" && option.trim() !== "")
-        : [];
-      if (options.length === 0) {
-        return NextResponse.json({ error: `Select field "${f.label}" must define at least one option` }, { status: 400 });
-      }
-      if (new Set(options).size !== options.length) {
-        return NextResponse.json({ error: `Select field "${f.label}" contains duplicate options` }, { status: 400 });
-      }
+    const normalizedSettings = normalizeFieldSettings(f);
+    if (!normalizedSettings.ok) {
+      return NextResponse.json({ error: normalizedSettings.error }, { status: 400 });
     }
+
+    sanitizedFields.push({
+      ...f,
+      settings_json: normalizedSettings.settings,
+    });
     keys.add(f.field_key);
   }
 
   const layoutResult = validateLayoutJson(
-    layoutJson ?? buildIntakeLayoutFromFields(fields),
+    layoutJson ?? buildIntakeLayoutFromFields(sanitizedFields),
     {
-      knownFieldKeys: fields.map((field: { field_key: string }) => field.field_key),
+      knownFieldKeys: sanitizedFields.map((field: { field_key: string }) => field.field_key),
       requireAllPlaced: false,
       allowedSectionKeys: ["main"],
     }
@@ -126,7 +211,7 @@ export async function PUT(
     await tx("DELETE FROM intake_form_fields WHERE intake_form_id = $1", [form.id]);
 
     // Insert new
-    for (const [idx, f] of fields.entries()) {
+    for (const [idx, f] of sanitizedFields.entries()) {
       await tx(
         `INSERT INTO intake_form_fields (
           intake_form_id, field_key, label, help_text, field_type, 
@@ -159,7 +244,7 @@ export async function PUT(
     actionType: "intake.fields_updated",
     targetType: "intake_form",
     targetId: form.id,
-    metadata: { field_count: fields.length }
+    metadata: { field_count: sanitizedFields.length }
   });
 
   return NextResponse.json({ success: true });

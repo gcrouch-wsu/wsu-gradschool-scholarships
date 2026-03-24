@@ -23,6 +23,11 @@ import {
   removeFieldFromDraftLayout,
   renameFieldInDraftLayout,
 } from "@/lib/layout-editor";
+import {
+  isIntakeTextFieldType,
+  MAX_INTAKE_TEXT_CHARACTER_LIMIT,
+  parseIntakeTextMaxLength,
+} from "@/lib/intake-settings";
 
 interface Column {
   id: number;
@@ -122,6 +127,11 @@ function getSelectOptions(field: IntakeField): string[] {
   const options = field.settings_json?.options;
   if (!Array.isArray(options)) return [];
   return options.filter((option): option is string => typeof option === "string" && option.trim() !== "");
+}
+
+function getFieldMaxLengthInputValue(field: IntakeField): string {
+  const maxLength = parseIntakeTextMaxLength(field.settings_json?.maxLength);
+  return maxLength === null ? "" : String(maxLength);
 }
 
 function AccordionCard({
@@ -661,6 +671,36 @@ export default function IntakeFormBuilder({
                     className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
                   />
                 </div>
+                {isIntakeTextFieldType(field.field_type) && (
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-zinc-500">Character Limit</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={MAX_INTAKE_TEXT_CHARACTER_LIMIT}
+                      value={getFieldMaxLengthInputValue(field)}
+                      onChange={(e) => {
+                        const nextSettings = { ...field.settings_json };
+                        if (e.target.value === "") {
+                          delete nextSettings.maxLength;
+                        } else {
+                          const parsed = Number.parseInt(e.target.value, 10);
+                          if (!Number.isInteger(parsed)) return;
+                          nextSettings.maxLength = Math.min(
+                            MAX_INTAKE_TEXT_CHARACTER_LIMIT,
+                            Math.max(1, parsed)
+                          );
+                        }
+                        updateField(idx, { settings_json: nextSettings });
+                      }}
+                      className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                      placeholder="No limit"
+                    />
+                    <p className="mt-1 text-[10px] text-zinc-500">
+                      Shown to nominators and enforced when they submit.
+                    </p>
+                  </div>
+                )}
                 {field.field_type !== "file" && (
                   <>
                     <div>
@@ -670,13 +710,19 @@ export default function IntakeFormBuilder({
                         onChange={(e) => {
                           const col = columns.find(c => String(c.id) === e.target.value);
                           const nextType = col ? inferFieldTypeFromColumn(col) : field.field_type;
+                          const nextMaxLength = parseIntakeTextMaxLength(field.settings_json?.maxLength);
                           updateField(idx, {
                             target_column_id: col ? col.id : null,
                             target_column_title: col ? col.title : null,
                             target_column_type: col ? col.type : null,
                             field_type: nextType,
                             settings_json: col
-                              ? getDefaultSettingsForFieldType(nextType, col)
+                              ? {
+                                  ...getDefaultSettingsForFieldType(nextType, col),
+                                  ...(isIntakeTextFieldType(nextType) && nextMaxLength !== null
+                                    ? { maxLength: nextMaxLength }
+                                    : {}),
+                                }
                               : field.settings_json
                           });
                         }}

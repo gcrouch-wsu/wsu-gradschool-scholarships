@@ -4,6 +4,11 @@ import { query, withTransaction } from "./db";
 import { decrypt } from "./encryption";
 import { addRow, getSheetSchema } from "./smartsheet";
 import { logAudit } from "./audit";
+import {
+  hasConfiguredIntakeTextMaxLength,
+  isIntakeTextFieldType,
+  parseIntakeTextMaxLength,
+} from "./intake-settings";
 
 export const runtime = "nodejs";
 
@@ -266,6 +271,16 @@ function normalizeTextLikeValue(field: PublishedIntakeField, raw: unknown): Vali
   }
   if (field.required && raw.trim() === "") {
     return { ok: false, error: `Field "${field.label}" is required` };
+  }
+  if (isIntakeTextFieldType(field.field_type)) {
+    const rawMaxLength = field.settings_json?.maxLength;
+    const maxLength = parseIntakeTextMaxLength(rawMaxLength);
+    if (hasConfiguredIntakeTextMaxLength(rawMaxLength) && maxLength === null) {
+      return { ok: false, error: `Field "${field.label}" has an invalid character limit configuration` };
+    }
+    if (maxLength !== null && raw.length > maxLength) {
+      return { ok: false, error: `Field "${field.label}" must be ${maxLength} characters or fewer` };
+    }
   }
   return { ok: true, value: raw };
 }
