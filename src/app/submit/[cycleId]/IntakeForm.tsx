@@ -60,6 +60,10 @@ function getFieldMaxLength(field: Field): number | undefined {
   return parseIntakeTextMaxLength(field.settings_json?.maxLength) ?? undefined;
 }
 
+function shouldRenderMultilineTextField(field: Field, maxLength: number | undefined): boolean {
+  return field.field_type === "long_text" || (field.field_type === "short_text" && (maxLength ?? 0) > 255);
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
@@ -377,6 +381,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                 {(() => {
                   const maxLength = getFieldMaxLength(field);
                   const currentLength = getStringValue(formData[field.field_key]).length;
+                  const useTextarea = shouldRenderMultilineTextField(field, maxLength);
 
                   return (
                     <>
@@ -385,24 +390,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                 </label>
                 {field.help_text && <p className="mt-1 text-xs text-zinc-500 mb-2">{field.help_text}</p>}
 
-                {field.field_type === "short_text" || field.field_type === "email" || field.field_type === "number" || field.field_type === "date" ? (
-                  <>
-                    <input
-                      type={field.field_type === "email" ? "email" : field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
-                      id={id}
-                      required={field.required}
-                      maxLength={field.field_type === "short_text" ? maxLength : undefined}
-                      value={getStringValue(formData[field.field_key])}
-                      onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
-                      className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
-                    />
-                    {field.field_type === "short_text" && maxLength && (
-                      <p className="mt-2 text-xs text-zinc-500">
-                        {currentLength}/{maxLength} characters
-                      </p>
-                    )}
-                  </>
-                ) : field.field_type === "long_text" ? (
+                {useTextarea ? (
                   <>
                     <textarea
                       id={id}
@@ -414,6 +402,23 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                       className="mt-1 w-full min-h-[16rem] resize-y rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
                     />
                     {maxLength && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        {currentLength}/{maxLength} characters
+                      </p>
+                    )}
+                  </>
+                ) : field.field_type === "short_text" || field.field_type === "email" || field.field_type === "number" || field.field_type === "date" ? (
+                  <>
+                    <input
+                      type={field.field_type === "email" ? "email" : field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : "text"}
+                      id={id}
+                      required={field.required}
+                      maxLength={field.field_type === "short_text" ? maxLength : undefined}
+                      value={getStringValue(formData[field.field_key])}
+                      onChange={(e) => setFormData({ ...formData, [field.field_key]: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 shadow-sm focus:border-[var(--wsu-crimson)] focus:ring-1 focus:ring-[var(--wsu-crimson)]"
+                    />
+                    {field.field_type === "short_text" && maxLength && (
                       <p className="mt-2 text-xs text-zinc-500">
                         {currentLength}/{maxLength} characters
                       </p>

@@ -113,6 +113,22 @@ function inferFieldTypeFromColumn(column: Column): string {
   return "short_text";
 }
 
+function resolveFieldTypeForColumn(field: IntakeField, column: Column): string {
+  if (column.type === "TEXT_NUMBER" && isIntakeTextFieldType(field.field_type)) {
+    return field.field_type;
+  }
+  return inferFieldTypeFromColumn(column);
+}
+
+function getAvailableFieldTypes(field: IntakeField): Array<{ value: string; label: string }> {
+  if (field.target_column_type === "TEXT_NUMBER") {
+    return FIELD_TYPES.filter(
+      (type) => type.value === "short_text" || type.value === "long_text"
+    );
+  }
+  return FIELD_TYPES.filter((type) => type.value === field.field_type);
+}
+
 function getDefaultSettingsForFieldType(type: string, column?: Column | null): Record<string, unknown> {
   if (type === "select") {
     return { options: [...(column?.options ?? [])] };
@@ -709,7 +725,7 @@ export default function IntakeFormBuilder({
                         value={field.target_column_id || ""}
                         onChange={(e) => {
                           const col = columns.find(c => String(c.id) === e.target.value);
-                          const nextType = col ? inferFieldTypeFromColumn(col) : field.field_type;
+                          const nextType = col ? resolveFieldTypeForColumn(field, col) : field.field_type;
                           const nextMaxLength = parseIntakeTextMaxLength(field.settings_json?.maxLength);
                           updateField(idx, {
                             target_column_id: col ? col.id : null,
@@ -734,6 +750,36 @@ export default function IntakeFormBuilder({
                         ))}
                       </select>
                     </div>
+                    {field.target_column_type === "TEXT_NUMBER" && (
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-zinc-500">Input Style</label>
+                        <select
+                          value={field.field_type}
+                          onChange={(e) => {
+                            const nextType = e.target.value;
+                            if (!isIntakeTextFieldType(nextType)) return;
+                            const nextMaxLength = parseIntakeTextMaxLength(field.settings_json?.maxLength);
+                            updateField(idx, {
+                              field_type: nextType,
+                              settings_json: {
+                                ...getDefaultSettingsForFieldType(nextType),
+                                ...(nextMaxLength !== null ? { maxLength: nextMaxLength } : {}),
+                              },
+                            });
+                          }}
+                          className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                        >
+                          {getAvailableFieldTypes(field).map((type) => (
+                            <option key={type.value} value={type.value}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[10px] text-zinc-500">
+                          Use Long Text for narrative responses that should render as a multiline box.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex items-center pt-5">
                       <label className="flex items-center gap-2 text-sm">
                         <input
