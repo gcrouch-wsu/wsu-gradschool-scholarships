@@ -6,7 +6,7 @@ Canonical product/spec document for this repo. For setup and deployment, see `RE
 
 ## Spec revision
 
-- **Last updated:** 2026-03-24
+- **Last updated:** 2026-03-25
 - **Meaning:** This date marks the spec baseline aligned with the **current build** and stated expectations. When behavior or scope changes materially, update the relevant sections and bump this date.
 
 ---
@@ -54,6 +54,7 @@ Migrations live in `supabase/migrations/`.
 | `006_reviewer_row_files.sql` | `reviewer_row_files` for reviewer-uploaded attachments |
 | `007_layout_json.sql` | `layout_json` on `intake_forms` and `view_configs` |
 | `008_reviewer_field_help_text.sql` | `help_text` on reviewer `field_configs` |
+| `009_enable_public_rls.sql` | enables RLS on app-owned public tables to block unintended Supabase Data API exposure |
 | _(next sequential)_ | native Smartsheet attachment mirroring changes described below |
 
 ---
@@ -102,9 +103,9 @@ Migrations live in `supabase/migrations/`.
 - Two-tier admin model: platform admin vs program admin
 - Cycle setup: Smartsheet connection, sheet sync, cycle status, external reviewer options
 - Reviewer builder: column mapping, purposes, field-level blind hide flags, optional per-field helper text, multi-role management, per-role view/edit permissions matrix with inline meaning guidance, row-based layout with 1/2/3-up desktop rows and drag row reorder, publish/unpublish, version snapshots, import/export/clone, delete/reset
-- Public intake builder: draft/publish/unpublish, versioned snapshots, rich-text instructions, multi-file PDF uploads, delete guard, optional character limits for `short_text` and `long_text`, row-based desktop layout with 1/2/3-up rows and drag row reorder
+- Public intake builder: draft/publish/unpublish, versioned snapshots, rich-text instructions, multi-file PDF uploads, delete guard, optional character limits for `short_text` and `long_text`, short-vs-narrative text input style for mapped Smartsheet text columns, row-based desktop layout with 1/2/3-up rows and drag row reorder
 - Public submit workflow: direct Blob uploads, metadata-only submit route, Smartsheet row creation, submission idempotency, schema-drift detection, rate limiting, honeypot
-- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view, reviewer-uploaded attachments, per-role field visibility/editability, field-level blind hiding that overrides reviewer access at runtime, helper text/instructions, published-layout rendering from canonical `layout_json`
+- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view, reviewer-uploaded attachments, per-role field visibility/editability, field-level blind hiding that overrides reviewer access at runtime, helper text/instructions, reviewer sign-out in the shell header, published-layout rendering from canonical `layout_json`
 - Admin preview and export: role-scoped reviewer preview config, merged attachments, ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and app-controlled signed file access
 
@@ -186,6 +187,10 @@ Reviewer roles, field permissions, and role-scoped preview are now shipped on cy
 14. Intake text-question character limits shipped: optional per-field limits for `short_text` and `long_text` render live counters in the public form and are enforced server-side
 15. Blind-review controls simplified: blind-hidden reviewer fields are configured only in the reviewer builder, and blind always overrides reviewer view/edit access in preview and live runtime
 16. Shared row-layout editor supports drag reorder for both intake and reviewer layouts, with Up/Down controls retained as a fallback
+17. Intake narrative text support shipped: mapped Smartsheet text questions can use short or long narrative input style, and large character-limit text questions render as multiline resizable textareas on the public form
+18. Schema sync refresh shipped: syncing Smartsheet columns now refreshes draft reviewer/intake mapped metadata, including derived labels and intake picklist options where they still mirror Smartsheet
+19. Shared reviewer/admin sign-out shipped: the reviewer shell now includes a logout control, and the reviewer header only shows `Admin` when the signed-in user actually has admin access
+20. Public-table RLS hardening shipped: app-owned tables in `public` now enable RLS by migration so Supabase Security Advisor no longer treats them as exposed without row controls
 
 ---
 
@@ -271,7 +276,7 @@ When an admin enables "Push to Smartsheet" on an intake attachment field, upload
 
 ### Data model changes
 
-Migration placeholder: `009_smartsheet_attachment_sync.sql` unless another migration ships first.
+Migration placeholder: `010_smartsheet_attachment_sync.sql` unless another migration ships first.
 
 Add to `intake_form_fields`:
 

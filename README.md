@@ -5,9 +5,9 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
 ## Current capabilities
 
 - Admin dashboard for programs, cycles, users, connections, templates, and assignments
-- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, optional text-question character limits, drag-reorder row layout, and direct write to Smartsheet rows
+- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, optional text-question character limits, short-vs-narrative text input style for Smartsheet text columns, drag-reorder row layout, and direct write to Smartsheet rows
 - Reviewer form builder with role-aware field behavior, field-level blind hiding, per-role view/edit permissions, optional helper text, drag-reorder row layout, publish/unpublish, and version snapshots
-- Reviewer workflow with progress tracking, Save and Next, row-level attachments, and reviewer-uploaded attachments
+- Reviewer workflow with progress tracking, Save and Next, row-level attachments, reviewer-uploaded attachments, and sign-out from the reviewer shell
 - Admin preview and export tools, including ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and schema-drift protection
 
@@ -78,6 +78,7 @@ Current migration set:
 - `006_reviewer_row_files.sql`
 - `007_layout_json.sql`
 - `008_reviewer_field_help_text.sql`
+- `009_enable_public_rls.sql`
 
 Important: deploying code is not enough by itself. New code that depends on new tables or columns still requires the matching SQL migration to be applied to the target database.
 
@@ -125,3 +126,4 @@ Typical production environment variables:
 - Smartsheet reads/writes are server-side only
 - Intake uploads and reviewer uploads are private Blob objects surfaced through app-controlled routes
 - Audit logs intentionally avoid storing full public submission payloads
+- Public app tables now enable Postgres Row Level Security by migration. This app does not rely on Supabase PostgREST for table access; it uses server-side `pg` connections only.

@@ -25,6 +25,12 @@ The app uses:
 - **Postgres** for app state
 - **Vercel Blob** for private file uploads
 
+Reviewer entry URL:
+
+- reviewers start at `/reviewer`
+- if not logged in, they are redirected to `/login`
+- the reviewer header now includes **Sign out**
+
 ---
 
 ## When to commit, redeploy, or run SQL
@@ -33,6 +39,7 @@ The app uses:
 - **Environment variables changed in Vercel**: redeploy in Vercel. No commit needed for env-var-only changes.
 - **Database schema changed** (new migration file or code depending on new tables/columns): apply the SQL migration to the target database separately. A Vercel deploy does not run migrations automatically.
 - **Code + env vars both changed**: commit and push first, then redeploy in Vercel so the new deployment picks up the new env vars.
+- **Supabase Security Advisor warns that public tables have RLS disabled**: apply the latest migration set. The app now expects public app tables to have RLS enabled because those tables are backend-owned and should not be exposed through Supabase's Data API.
 
 ---
 
@@ -288,6 +295,7 @@ They cannot:
 ### Important scholarship admin notes
 
 - If Smartsheet columns change, click **Sync columns from Smartsheet** again before editing forms.
+- Schema sync refreshes draft mapped metadata such as synced column titles and intake picklist options. Republish the intake or reviewer form afterward if the live published form needs those updates.
 - The nomination intake form and reviewer form are separate.
 - Publishing the reviewer form is separate from publishing the nomination intake form.
 - Blind-hidden reviewer fields are configured only inside the reviewer form builder. There is no separate cycle-level blind toggle.
@@ -304,6 +312,7 @@ Key behaviors:
 - it writes structured field data into Smartsheet
 - uploads go to private Blob, not directly into Smartsheet
 - PDFs can be uploaded as single-file or multi-file fields
+- mapped Smartsheet text columns can use short or long narrative input style
 - the form can be drafted, published, unpublished, or deleted
 - delete is guarded once submission history exists
 
@@ -330,6 +339,7 @@ Key behaviors:
 - it uses reviewer roles and permissions
 - blind-hidden fields are configured per field inside the reviewer builder and override reviewer access at runtime
 - it supports row-based layout with drag row reorder
+- reviewers enter at `/reviewer` and can sign out from the reviewer header
 - the published reviewer config is versioned separately
 
 ### Typical reviewer form flow
@@ -378,7 +388,7 @@ Do not assume Vercel deploys run SQL migrations for you.
 | Blob uploads do not work | Confirm Blob is attached in Vercel Storage and `BLOB_READ_WRITE_TOKEN` exists |
 | Cron-backed cleanup routes fail | Confirm `CRON_SECRET` is set |
 | A cycle page says the intake schema is unavailable | Apply the missing SQL migration to the database |
-| Reviewer or intake columns look wrong after Smartsheet changes | Click **Sync columns from Smartsheet** again |
+| Reviewer or intake columns look wrong after Smartsheet changes | Click **Sync columns from Smartsheet** again, then republish if you need the live published forms to pick up refreshed draft metadata |
 | Login works locally but not in production | Recheck `DATABASE_URL`, `ENCRYPTION_KEY`, and whether the production DB was seeded |
 | A code deploy succeeds but a feature still fails with missing-table errors | The code is deployed but the matching SQL migration was not applied |
 
