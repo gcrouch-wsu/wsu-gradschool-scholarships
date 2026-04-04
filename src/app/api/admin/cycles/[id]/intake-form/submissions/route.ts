@@ -36,6 +36,7 @@ export async function GET(
     submission_id: string;
     submitter_email: string | null;
     status: string;
+    attachment_sync_status: string;
     smartsheet_row_id: number | null;
     created_at: string;
     version_number: number | null;
@@ -45,6 +46,7 @@ export async function GET(
         s.submission_id,
         s.submitter_email,
         s.status,
+        s.attachment_sync_status,
         s.smartsheet_row_id,
         s.created_at,
         v.version_number,

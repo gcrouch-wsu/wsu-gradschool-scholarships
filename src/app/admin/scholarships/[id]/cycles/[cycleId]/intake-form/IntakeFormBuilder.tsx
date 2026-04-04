@@ -54,6 +54,7 @@ interface IntakeSubmissionSummary {
   submission_id: string;
   submitter_email: string | null;
   status: string;
+  attachment_sync_status: string;
   smartsheet_row_id: number | null;
   created_at: string;
   is_resolved: boolean;
@@ -931,6 +932,7 @@ export default function IntakeFormBuilder({
                   <th className="px-4 py-2">Date</th>
                   <th className="px-4 py-2">Submitter</th>
                   <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Attachment Sync</th>
                   <th className="px-4 py-2">Smartsheet Row</th>
                   <th className="px-4 py-2">Actions</th>
                 </tr>
@@ -947,6 +949,17 @@ export default function IntakeFormBuilder({
                         "bg-red-100 text-red-700"
                       }`}>
                         {s.status}{s.is_resolved ? " / resolved" : ""}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        s.attachment_sync_status === "synced" ? "bg-green-100 text-green-700" :
+                        s.attachment_sync_status === "pending" ? "bg-amber-100 text-amber-700" :
+                        s.attachment_sync_status === "partial" ? "bg-blue-100 text-blue-700" :
+                        s.attachment_sync_status === "failed" ? "bg-red-100 text-red-700" :
+                        "bg-zinc-100 text-zinc-500"
+                      }`}>
+                        {s.attachment_sync_status.replace("_", " ")}
                       </span>
                     </td>
                     <td className="px-4 py-3">{s.smartsheet_row_id || "—"}</td>
