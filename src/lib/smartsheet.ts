@@ -367,13 +367,17 @@ export async function attachFileToRowFromReadable(
   const ms = timeoutMs ?? 120_000;
   try {
     const form = new FormData();
-    form.append("file", stream, { filename, contentType });
+    // Smartsheet requires the part name to be exactly "file"
+    form.append("file", stream, {
+      filename,
+      contentType,
+    });
 
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        ...form.getHeaders(),
+        ...form.getHeaders(), // Critical: includes Content-Type with boundary
       },
       body: form as unknown as BodyInit,
       duplex: "half",
@@ -413,11 +417,18 @@ export async function attachFileToRow(
   const ms = timeoutMs ?? 120_000;
   try {
     const form = new FormData();
-    form.append("file", new Blob([Buffer.from(fileBytes)], { type: contentType }), filename);
+    // Use Buffer for compatibility with form-data package; name part "file"
+    form.append("file", Buffer.from(fileBytes), {
+      filename,
+      contentType,
+    });
 
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...form.getHeaders(), // Critical: includes Content-Type with boundary
+      },
       body: form as unknown as BodyInit,
       signal: AbortSignal.timeout(ms),
     });
