@@ -953,18 +953,23 @@ export default function IntakeFormBuilder({
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span 
+                      <div 
                         title={s.sync_error_message || undefined}
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        s.attachment_sync_status === "synced" ? "bg-green-100 text-green-700" :
-                        s.attachment_sync_status === "pending" ? "bg-amber-100 text-amber-700" :
-                        s.attachment_sync_status === "partial" ? "bg-blue-100 text-blue-700" :
-                        s.attachment_sync_status === "failed" ? "bg-red-100 text-red-700" :
-                        "bg-zinc-100 text-zinc-500"
-                      }`}>
-                        {s.attachment_sync_status.replace("_", " ")}
-                        {s.sync_error_message && <span className="ml-1 text-[8px] cursor-help">ⓘ</span>}
-                      </span>
+                        className="inline-flex items-center"
+                      >
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          s.attachment_sync_status === "synced" ? "bg-green-100 text-green-700" :
+                          s.attachment_sync_status === "pending" ? "bg-amber-100 text-amber-700" :
+                          s.attachment_sync_status === "partial" ? "bg-blue-100 text-blue-700" :
+                          s.attachment_sync_status === "failed" ? "bg-red-100 text-red-700" :
+                          "bg-zinc-100 text-zinc-500"
+                        }`}>
+                          {s.attachment_sync_status.replace("_", " ")}
+                        </span>
+                        {s.sync_error_message && (
+                          <span className="ml-1 text-zinc-400 cursor-help" aria-hidden="true">ⓘ</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">{s.smartsheet_row_id || "—"}</td>
                     <td className="px-4 py-3 text-xs">

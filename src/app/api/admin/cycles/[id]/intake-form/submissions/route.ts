@@ -49,7 +49,7 @@ export async function GET(
         s.status,
         s.attachment_sync_status,
         (
-          SELECT sync_error_json ->> 'message'
+          SELECT sync_error_json ->> 'error'
           FROM intake_submission_files
           WHERE submission_id = s.submission_id AND attachment_sync_status IN ('retryable_failed', 'permanent_failed')
           ORDER BY last_sync_attempt_at DESC
