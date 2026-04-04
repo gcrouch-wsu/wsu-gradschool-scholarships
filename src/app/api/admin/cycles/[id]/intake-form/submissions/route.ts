@@ -37,6 +37,7 @@ export async function GET(
     submitter_email: string | null;
     status: string;
     attachment_sync_status: string;
+    sync_error_message: string | null;
     smartsheet_row_id: number | null;
     created_at: string;
     version_number: number | null;
@@ -47,6 +48,13 @@ export async function GET(
         s.submitter_email,
         s.status,
         s.attachment_sync_status,
+        (
+          SELECT sync_error_json ->> 'message'
+          FROM intake_submission_files
+          WHERE submission_id = s.submission_id AND attachment_sync_status IN ('retryable_failed', 'permanent_failed')
+          ORDER BY last_sync_attempt_at DESC
+          LIMIT 1
+        ) as sync_error_message,
         s.smartsheet_row_id,
         s.created_at,
         v.version_number,
