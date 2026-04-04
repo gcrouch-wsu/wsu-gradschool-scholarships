@@ -82,6 +82,18 @@ function getLongTextRows(value: string): number {
   return Math.min(20, Math.max(10, estimatedWrappedLines));
 }
 
+async function readResponseJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(`Empty response from server (HTTP ${res.status}).`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid response (HTTP ${res.status}): ${text.slice(0, 100)}...`);
+  }
+}
+
 export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [schema, setSchema] = useState<FormSchema | null>(null);
   const [submissionId] = useState(() => crypto.randomUUID());
@@ -95,17 +107,21 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/submit/${cycleId}`)
-      .then(async (res) => {
+    async function load() {
+      try {
+        const res = await fetch(`/api/submit/${cycleId}`);
+        const data = await readResponseJson<FormSchema & { error?: string }>(res);
         if (!res.ok) {
-          const d = await res.json();
-          throw new Error(d.error || "Failed to load form");
+          throw new Error(data.error || "Failed to load form");
         }
-        return res.json();
-      })
-      .then(setSchema)
-      .catch((err: unknown) => setError(getErrorMessage(err, "Failed to load form")))
-      .finally(() => setLoading(false));
+        setSchema(data);
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, "Failed to load form"));
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
   }, [cycleId]);
 
   const uploadFilesForField = async (
@@ -154,12 +170,12 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
           })
         });
 
+        const tokenData = await readResponseJson<{ token: string; pathname: string; error?: string }>(tokenRes);
         if (!tokenRes.ok) {
-          const d = await tokenRes.json();
-          throw new Error(d.error || "Failed to authorize upload");
+          throw new Error(tokenData.error || "Failed to authorize upload");
         }
 
-        const { token, pathname } = await tokenRes.json();
+        const { token, pathname } = tokenData;
 
         const blob = await put(pathname, file, {
           access: "private",
@@ -220,8 +236,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         }),
       });
 
+      const data = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to remove upload");
       }
 
@@ -259,8 +275,8 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
         })
       });
 
+      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
       if (!res.ok) {
-        const d = await res.json();
         throw new Error(d.error || "Submission failed");
       }
 
