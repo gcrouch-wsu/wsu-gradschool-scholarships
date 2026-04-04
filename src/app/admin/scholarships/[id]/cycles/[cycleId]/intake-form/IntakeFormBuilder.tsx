@@ -430,7 +430,7 @@ export default function IntakeFormBuilder({
     if (!confirm("Retry processing this submission?")) return;
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}/retry`, { method: "POST" });
-      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
+      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
       if (!res.ok) {
         throw new Error(d.error || "Retry failed");
       }
@@ -446,7 +446,7 @@ export default function IntakeFormBuilder({
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}`, { method: "DELETE" });
       if (!res.ok) {
-        const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
+        const d = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
         throw new Error(d.error || "Delete failed");
       }
       setSuccess("Submission record deleted");
@@ -467,7 +467,7 @@ export default function IntakeFormBuilder({
     setSuccess("");
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form`, { method: "DELETE" });
-      const data = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
+      const data = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
       if (!res.ok) {
         throw new Error(data.error || "Failed to delete intake form");
       }
@@ -481,7 +481,7 @@ export default function IntakeFormBuilder({
   const handleResolve = async (submissionId: string) => {
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}/resolve`, { method: "POST" });
-      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
+      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({ error: undefined }));
       if (!res.ok) {
         throw new Error(d.error || "Resolve failed");
       }
