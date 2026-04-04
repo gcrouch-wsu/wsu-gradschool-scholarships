@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { checkRateLimit, processSubmission } from "@/lib/intake";
+import { checkRateLimit, maxFileSizeBytesForIntakeField, processSubmission } from "@/lib/intake";
+import type { PublishedIntakeField, PublishedIntakeSnapshot } from "@/lib/intake";
 import {
   buildIntakeLayoutFromFields,
   readLayoutJsonOrFallback,
@@ -11,6 +12,20 @@ import {
 } from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
+
+interface PublishedIntakeFormRow {
+  title: string;
+  instructions_text?: string | null;
+  opens_at: string | null;
+  closes_at: string | null;
+  form_status: string;
+  version_id: string;
+  snapshot_json: PublishedIntakeSnapshot;
+}
+
+interface PublishedIntakeFormRowWithId extends PublishedIntakeFormRow {
+  id: string;
+}
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -35,7 +50,7 @@ export async function GET(
   }
 
   // Get intake form and its published version
-  const { rows } = await query<any>(
+  const { rows } = await query<PublishedIntakeFormRow>(
     `SELECT f.title, f.instructions_text, f.opens_at, f.closes_at, f.status as form_status,
             v.id as version_id, v.snapshot_json
      FROM intake_forms f
@@ -69,6 +84,13 @@ export async function GET(
     }
   );
 
+  const sortedFields = snapshot.fields
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((f: PublishedIntakeField) => ({
+      ...f,
+      maxFileSizeBytes: maxFileSizeBytesForIntakeField(f),
+    }));
+
   return NextResponse.json({
     cycleId,
     formVersionId: form.version_id,
@@ -78,11 +100,11 @@ export async function GET(
     closesAt: snapshot.closes_at,
     status,
     layoutJson,
-    fields: snapshot.fields.sort((a: any, b: any) => a.sort_order - b.sort_order),
+    fields: sortedFields,
     fileLimits: {
-      maxSizeBytes: 104857600, // 100 MB
-      allowedContentTypes: ["application/pdf"]
-    }
+      maxSizeBytes: 104857600,
+      allowedContentTypes: ["application/pdf"],
+    },
   });
 }
 
@@ -127,7 +149,7 @@ export async function POST(
   }
 
   // Get intake form and its published version
-  const { rows } = await query<any>(
+  const { rows } = await query<PublishedIntakeFormRowWithId>(
     `SELECT f.id, f.opens_at, f.closes_at, f.status as form_status,
             v.id as version_id, v.snapshot_json
      FROM intake_forms f

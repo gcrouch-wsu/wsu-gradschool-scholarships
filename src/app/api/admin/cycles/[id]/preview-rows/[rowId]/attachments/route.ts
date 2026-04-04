@@ -3,8 +3,8 @@ import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
-import { createSignedIntakeFileUrl } from "@/lib/intake";
 import { getIntakeSchemaStatus } from "@/lib/intake-schema";
+import { mergeIntakeWithSmartsheetAttachments } from "@/lib/intake-attachment-merge";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import {
   createSignedReviewerFileUrl,
@@ -112,8 +112,11 @@ export async function GET(
         await query<{
           id: string;
           original_filename: string;
+          attachment_sync_status: string;
+          smartsheet_attachment_id: string | number | null;
         }>(
-          "SELECT id, original_filename FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2",
+          `SELECT id, original_filename, attachment_sync_status, smartsheet_attachment_id
+           FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2`,
           [cycleId, rowIdNum]
         )
       ).rows
@@ -132,21 +135,10 @@ export async function GET(
       ).rows
     : [];
 
+  const mergedIntake = mergeIntakeWithSmartsheetAttachments(result.attachments ?? [], intakeFiles);
+
   const merged = [
-    ...(result.attachments ?? []).map((a) => ({
-      id: String(a.id),
-      name: a.name,
-      url: a.url,
-      source: "smartsheet" as const,
-      mimeType: a.mimeType,
-    })),
-    ...intakeFiles.map((f) => ({
-      id: f.id,
-      name: f.original_filename,
-      url: createSignedIntakeFileUrl(f.id),
-      source: "intake_upload" as const,
-      mimeType: "application/pdf",
-    })),
+    ...mergedIntake,
     ...reviewerFiles.map((f) => ({
       id: f.id,
       name: f.original_filename,

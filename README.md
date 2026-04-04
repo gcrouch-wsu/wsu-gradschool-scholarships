@@ -82,6 +82,8 @@ Current migration set:
 
 Important: deploying code is not enough by itself. New code that depends on new tables or columns still requires the matching SQL migration to be applied to the target database.
 
+Future schema rule: if a migration adds a new app-owned table in `public`, enable Row Level Security for that table in the same migration. After applying schema changes on Supabase, rerun Security Advisor and treat new `rls_disabled_in_public` findings as a release blocker.
+
 ## Recommended local verification
 
 Before pushing changes that touch routes, layout logic, auth, file handling, or Smartsheet writes:
@@ -127,3 +129,4 @@ Typical production environment variables:
 - Intake uploads and reviewer uploads are private Blob objects surfaced through app-controlled routes
 - Audit logs intentionally avoid storing full public submission payloads
 - Public app tables now enable Postgres Row Level Security by migration. This app does not rely on Supabase PostgREST for table access; it uses server-side `pg` connections only.
+- Any future app-owned table added to `public` must ship with RLS enabled in the same schema change.

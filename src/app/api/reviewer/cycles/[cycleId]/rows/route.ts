@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import { decrypt } from "@/lib/encryption";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import { readReviewerVisibilitySettings } from "@/lib/reviewer-field-access";
+import { filterRowsByMembershipCriteria } from "@/lib/membership-row-filter";
 import { getSheetRows } from "@/lib/smartsheet";
 
 export async function GET(
@@ -17,8 +18,8 @@ export async function GET(
 
   const { cycleId } = await params;
 
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
+  const { rows: membership } = await query<{ role_id: string; filter_criteria_json: unknown }>(
+    `SELECT m.role_id, m.filter_criteria_json FROM scholarship_memberships m
      JOIN scholarship_cycles c ON c.id = m.cycle_id
      WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
     [user.id, cycleId]
@@ -103,7 +104,12 @@ export async function GET(
     );
   }
 
-  const nominees = result.rows.map((row, index) => {
+  const sheetRows = filterRowsByMembershipCriteria(
+    result.rows,
+    membership[0]!.filter_criteria_json
+  );
+
+  const nominees = sheetRows.map((row, index) => {
     const identity: Record<string, unknown> = {};
     for (const f of identityFields) {
       identity[f.field_key] = row.cells[f.source_column_id] ?? "";

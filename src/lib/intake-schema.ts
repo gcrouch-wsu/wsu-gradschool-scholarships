@@ -11,7 +11,7 @@ const INTAKE_TABLES = [
 
 type IntakeTableName = (typeof INTAKE_TABLES)[number];
 
-interface IntakeSchemaRow extends Record<IntakeTableName, string | null> {}
+type IntakeSchemaRow = Record<IntakeTableName, string | null>;
 
 interface PgErrorLike {
   code?: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { put } from "@vercel/blob/client";
 import { sanitizeRichTextHtml } from "@/lib/rich-text";
 import type { SavedLayoutJson } from "@/lib/layout";
@@ -17,6 +18,9 @@ interface Field {
   field_type: string;
   required: boolean;
   settings_json: Record<string, unknown>;
+  push_to_smartsheet?: boolean;
+  /** Server-computed cap for PDF uploads (30 MB when mirroring, else 100 MB) */
+  maxFileSizeBytes?: number;
 }
 
 interface FormSchema {
@@ -118,13 +122,21 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
     try {
       const uploadedEntries: UploadedFileEntry[] = [];
 
+      const fieldCfg = schema?.fields.find((f) => f.field_key === fieldKey);
+      const maxBytes =
+        fieldCfg?.maxFileSizeBytes ?? schema?.fileLimits.maxSizeBytes ?? 104857600;
+
       for (const file of filesToUpload) {
         if (file.type !== "application/pdf") {
           throw new Error("Only PDF files are allowed");
         }
 
-        if (file.size > (schema?.fileLimits.maxSizeBytes || 104857600)) {
-          throw new Error("File size exceeds 100MB limit");
+        if (file.size > maxBytes) {
+          throw new Error(
+            maxBytes <= 30 * 1024 * 1024
+              ? "File size exceeds 30 MB limit for this field"
+              : "File size exceeds 100 MB limit"
+          );
         }
 
         const uploadId = crypto.randomUUID();
@@ -261,8 +273,44 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
     }
   };
 
-  if (loading) return <div className="p-8 text-center text-zinc-500">Loading form...</div>;
-  if (error && !schema) return <div className="p-8 text-center text-red-600 font-medium">{error}</div>;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6" aria-busy="true" aria-label="Loading nomination form">
+        <div className="animate-pulse space-y-6 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm sm:p-10">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-12 w-12 rounded bg-zinc-200" />
+            <div className="h-9 w-[min(100%,20rem)] rounded-lg bg-zinc-200" />
+            <div className="h-4 w-full max-w-xl rounded bg-zinc-100" />
+            <div className="h-4 w-full max-w-lg rounded bg-zinc-100" />
+          </div>
+          <div className="space-y-3 border-t border-zinc-100 pt-6">
+            <div className="h-10 rounded-lg bg-zinc-100" />
+            <div className="h-10 rounded-lg bg-zinc-100" />
+            <div className="h-40 rounded-lg bg-zinc-100" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !schema) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16 text-center sm:px-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-8 shadow-sm" role="alert">
+          <h1 className="text-lg font-semibold text-red-900">This form cannot be loaded</h1>
+          <p className="mt-3 text-sm leading-relaxed text-red-800">{error}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-6 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-red-900 shadow-sm ring-1 ring-red-200 transition hover:bg-red-100/80"
+          >
+            Reload page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!schema) return null;
   const instructionsHtml = sanitizeRichTextHtml(schema.instructionsText);
   const boundLayout = bindFieldsToLayout({
@@ -274,32 +322,55 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   const layoutRows = boundLayout.sections[0]?.rows ?? [];
 
   if (schema.status !== "open") {
+    const opensHuman =
+      schema.status === "scheduled" && schema.opensAt
+        ? new Date(schema.opensAt).toLocaleString(undefined, {
+            dateStyle: "full",
+            timeStyle: "short",
+          })
+        : null;
     return (
-      <div className="mx-auto max-w-2xl p-8 text-center">
-        <h1 className="text-2xl font-bold text-zinc-900">{schema.title}</h1>
-        <p className="mt-4 text-zinc-600">
-          {schema.status === "scheduled" 
-            ? `This form is not yet open. It is scheduled to open on ${new Date(schema.opensAt!).toLocaleString()}.`
-            : "This form is currently closed and no longer accepting submissions."}
-        </p>
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
+        <div className="rounded-2xl border border-zinc-200 bg-white p-10 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            {schema.status === "scheduled" ? "Not yet open" : "Closed"}
+          </p>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+            {schema.title}
+          </h1>
+          <p className="mt-5 text-base leading-relaxed text-zinc-600">
+            {schema.status === "scheduled" && opensHuman
+              ? `This form opens on ${opensHuman}. Please return after that time.`
+              : "This form is closed and is no longer accepting nominations."}
+          </p>
+        </div>
       </div>
     );
   }
 
   if (submitted) {
     return (
-      <div className="mx-auto max-w-2xl p-8 text-center">
-        <div className="mb-4 text-4xl">✅</div>
-        <h1 className="text-2xl font-bold text-zinc-900">Submission Received</h1>
-        <p className="mt-4 text-zinc-600">
-          Thank you. Your nomination has been submitted successfully.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-8 text-sm font-medium text-[var(--wsu-crimson)] hover:underline"
-        >
-          Submit another nomination
-        </button>
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-10 shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+            <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="mt-6 text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+            Submission received
+          </h1>
+          <p className="mt-4 text-base leading-relaxed text-zinc-700">
+            Thank you. Your nomination was submitted and is being processed.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-8 rounded-lg bg-[var(--wsu-crimson)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--wsu-crimson-hover)]"
+          >
+            Submit another nomination
+          </button>
+        </div>
       </div>
     );
   }
@@ -307,7 +378,14 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
       <div className="mb-10 text-center">
-        <img src="/wsu-logo.png" alt="WSU Graduate School" className="mx-auto mb-6 h-12 w-auto" />
+        <Image
+          src="/wsu-logo.png"
+          alt="Washington State University Graduate School"
+          width={220}
+          height={56}
+          className="mx-auto mb-6 h-12 w-auto object-contain"
+          priority
+        />
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">{schema.title}</h1>
         {instructionsHtml && (
           <div
@@ -319,7 +397,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
 
       <form onSubmit={handleSubmit} className="space-y-8 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-10">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-800 shadow-sm" role="alert">
             {error}
           </div>
         )}
@@ -342,7 +420,9 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
               />
             </div>
             <div className="hidden" aria-hidden="true">
-              <label htmlFor="intake-honeypot">Leave this field blank</label>
+              <label htmlFor="intake-honeypot" aria-hidden="true">
+                Leave this field blank
+              </label>
               <input
                 id="intake-honeypot"
                 type="text"
@@ -476,17 +556,26 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                         const droppedFiles = Array.from(e.dataTransfer.files || []);
                         void uploadFilesForField(field.field_key, allowMultiple, droppedFiles);
                       }}
-                      className={`rounded-lg border-2 border-dashed px-4 py-5 text-center transition ${
+                      aria-busy={!!uploading[field.field_key]}
+                      className={`rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
                         draggingFieldKey === field.field_key
                           ? "border-[var(--wsu-crimson)] bg-rose-50"
                           : "border-zinc-300 bg-zinc-50"
-                      }`}
+                      } ${uploading[field.field_key] ? "pointer-events-none opacity-70" : ""}`}
                     >
                       <p className="text-sm font-medium text-zinc-800">
                         Drag and drop PDF files here
                       </p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        {allowMultiple ? "You may upload multiple PDF files for this question." : "Upload one PDF file for this question."}
+                        {allowMultiple ? "You may upload multiple PDF files for this question." : "Upload one PDF file for this question."}{" "}
+                        Maximum size{" "}
+                        {field.maxFileSizeBytes && field.maxFileSizeBytes <= 30 * 1024 * 1024
+                          ? "30 MB"
+                          : "100 MB"}
+                        .
+                        {field.push_to_smartsheet
+                          ? " Files from this field will be mirrored to Smartsheet after submission."
+                          : ""}
                       </p>
                       <label
                         htmlFor={id}
@@ -496,7 +585,9 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                       </label>
                     </div>
                     {uploading[field.field_key] && (
-                      <p className="mt-2 text-xs text-blue-600 animate-pulse font-medium">Uploading to secure storage...</p>
+                      <p className="mt-2 text-xs font-medium text-blue-700" role="status" aria-live="polite">
+                        Uploading… secure storage
+                      </p>
                     )}
                     {fieldFiles.length > 0 && (
                       <ul className="mt-3 space-y-2">
@@ -509,7 +600,7 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
                             <button
                               type="button"
                               onClick={() => removeUploadedFile(field.field_key, file.blobPathname)}
-                              className="font-medium text-red-600 hover:underline"
+                              className="rounded-sm font-medium text-red-700 underline-offset-2 hover:underline"
                             >
                               Remove
                             </button>
@@ -534,13 +625,18 @@ export default function IntakeForm({ cycleId }: { cycleId: string }) {
           <button
             type="submit"
             disabled={submitting || Object.values(uploading).some(Boolean)}
-            className="w-full rounded-lg bg-[var(--wsu-crimson)] py-4 text-lg font-bold text-white shadow-lg hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50 transition-all active:scale-[0.98]"
+            aria-busy={submitting}
+            className="w-full rounded-lg bg-[var(--wsu-crimson)] py-4 text-lg font-bold text-white shadow-md transition-colors hover:bg-[var(--wsu-crimson-hover)] disabled:cursor-not-allowed disabled:opacity-55 active:scale-[0.99]"
           >
-            {submitting ? "Processing Submission..." : "Submit Nomination"}
+            {submitting ? "Submitting…" : "Submit nomination"}
           </button>
-          <p className="mt-4 text-center text-[11px] text-zinc-400">
-            By submitting this form, you are creating a record in Smartsheet. 
-            All uploads are stored securely in private cloud storage.
+          {Object.values(uploading).some(Boolean) && (
+            <p className="mt-3 text-center text-sm text-amber-800" role="status">
+              Wait for uploads to finish before submitting.
+            </p>
+          )}
+          <p className="mt-4 text-center text-xs leading-relaxed text-zinc-500">
+            By submitting, you create a row in Smartsheet. Files stay in private storage until they are processed.
           </p>
         </div>
       </form>

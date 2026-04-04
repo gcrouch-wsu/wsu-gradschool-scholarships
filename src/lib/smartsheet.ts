@@ -1,3 +1,7 @@
+import { Buffer } from "node:buffer";
+import FormData from "form-data";
+import type { Readable as NodeReadable } from "node:stream";
+
 /**
  * Smartsheet API proxy - server-side only.
  * Token never exposed to client.
@@ -221,44 +225,227 @@ export interface SmartsheetAttachment {
   url?: string;
   urlExpiresInMillis?: number;
   mimeType?: string;
+  /** Smartsheet returns size in KB — used for dedup vs our size_bytes */
+  sizeInKb?: number;
 }
 
+const ATTACHMENT_PAGE_SIZE = 100;
+
+/**
+ * List all row attachments (handles API pagination).
+ */
 export async function getRowAttachments(
   token: string,
   sheetId: number,
   rowId: number
-): Promise<{ ok: boolean; attachments?: SmartsheetAttachment[]; error?: string }> {
+): Promise<{ ok: boolean; attachments?: SmartsheetAttachment[]; error?: string; httpStatus?: number }> {
   try {
-    const res = await fetch(
-      `${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000),
+    const all: SmartsheetAttachment[] = [];
+    let page = 1;
+
+    while (page <= 200) {
+      const res = await fetch(
+        `${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments?page=${page}&pageSize=${ATTACHMENT_PAGE_SIZE}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(20000),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.text();
+        return { ok: false, error: body || `HTTP ${res.status}`, httpStatus: res.status };
       }
-    );
-    if (!res.ok) {
-      const body = await res.text();
-      return { ok: false, error: body || `HTTP ${res.status}` };
+      const data = (await res.json()) as {
+        data?: Array<{
+          id: number;
+          name: string;
+          url?: string;
+          urlExpiresInMillis?: number;
+          mimeType?: string;
+          sizeInKb?: number;
+        }>;
+      };
+      const chunk = data.data ?? [];
+      for (const a of chunk) {
+        all.push({
+          id: a.id,
+          name: a.name,
+          url: a.url,
+          urlExpiresInMillis: a.urlExpiresInMillis,
+          mimeType: a.mimeType,
+          sizeInKb: a.sizeInKb,
+        });
+      }
+      if (chunk.length === 0 || chunk.length < ATTACHMENT_PAGE_SIZE) break;
+      page += 1;
     }
-    const data = (await res.json()) as {
-      data?: Array<{
-        id: number;
-        name: string;
-        url?: string;
-        urlExpiresInMillis?: number;
-        mimeType?: string;
-      }>;
-    };
-    const attachments = (data.data ?? []).map((a) => ({
-      id: a.id,
-      name: a.name,
-      url: a.url,
-      urlExpiresInMillis: a.urlExpiresInMillis,
-      mimeType: a.mimeType,
-    }));
-    return { ok: true, attachments };
+
+    return { ok: true, attachments: all };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
   }
+}
+
+export interface AttachFileResult {
+  ok: true;
+  attachmentId: number;
+}
+
+export interface AttachFileError {
+  ok: false;
+  error: string;
+  httpStatus?: number;
+  errorCode?: number;
+}
+
+function parseAttachResponseBody(body: string, httpStatus: number): AttachFileResult | AttachFileError {
+  let attachmentId: number | undefined;
+  try {
+    const data = JSON.parse(body) as { result?: { id?: number }; id?: number };
+    attachmentId = data.result?.id ?? data.id;
+  } catch {
+    return { ok: false, error: "Invalid Smartsheet attach response", httpStatus };
+  }
+
+  if (typeof attachmentId !== "number" || !Number.isFinite(attachmentId)) {
+    return { ok: false, error: "Smartsheet attach response missing attachment id", httpStatus };
+  }
+
+  return { ok: true, attachmentId };
+}
+
+/**
+ * Download URL for an existing FILE attachment (time-limited; use immediately).
+ */
+export async function getAttachmentDownloadMeta(
+  token: string,
+  sheetId: number,
+  attachmentId: number
+): Promise<
+  { ok: true; url: string; name?: string } | { ok: false; error: string; httpStatus?: number }
+> {
+  try {
+    const res = await fetch(`${BASE_URL}/sheets/${sheetId}/attachments/${attachmentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(60_000),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      return { ok: false, error: body || `HTTP ${res.status}`, httpStatus: res.status };
+    }
+    let data: { url?: string; name?: string; result?: { url?: string; name?: string } };
+    try {
+      data = JSON.parse(body) as typeof data;
+    } catch {
+      return { ok: false, error: "Invalid Smartsheet attachment JSON", httpStatus: res.status };
+    }
+    const url = data.result?.url ?? data.url;
+    const name = data.result?.name ?? data.name;
+    if (typeof url !== "string" || !url) {
+      return { ok: false, error: "Attachment response missing url", httpStatus: res.status };
+    }
+    return { ok: true, url, name };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+/**
+ * Upload a native FILE attachment to a Smartsheet row (multipart), streaming body.
+ */
+export async function attachFileToRowFromReadable(
+  token: string,
+  sheetId: number,
+  rowId: number,
+  filename: string,
+  contentType: string,
+  stream: NodeReadable,
+  timeoutMs?: number
+): Promise<AttachFileResult | AttachFileError> {
+  const ms = timeoutMs ?? 120_000;
+  try {
+    const form = new FormData();
+    form.append("file", stream, { filename, contentType });
+
+    const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...form.getHeaders(),
+      },
+      body: form as unknown as BodyInit,
+      duplex: "half",
+      signal: AbortSignal.timeout(ms),
+    } as RequestInit & { duplex: "half" });
+
+    const body = await res.text();
+    if (!res.ok) {
+      const parsed = parseSmartsheetError(body, res.status);
+      return {
+        ok: false,
+        error: parsed.message,
+        httpStatus: parsed.httpStatus,
+        errorCode: parsed.errorCode,
+      };
+    }
+
+    return parseAttachResponseBody(body, res.status);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+/**
+ * Upload a native FILE attachment to a Smartsheet row (multipart).
+ */
+export async function attachFileToRow(
+  token: string,
+  sheetId: number,
+  rowId: number,
+  filename: string,
+  contentType: string,
+  fileBytes: Uint8Array,
+  timeoutMs?: number
+): Promise<AttachFileResult | AttachFileError> {
+  const ms = timeoutMs ?? 120_000;
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([Buffer.from(fileBytes)], { type: contentType }), filename);
+
+    const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form as unknown as BodyInit,
+      signal: AbortSignal.timeout(ms),
+    });
+
+    const body = await res.text();
+    if (!res.ok) {
+      const parsed = parseSmartsheetError(body, res.status);
+      return {
+        ok: false,
+        error: parsed.message,
+        httpStatus: parsed.httpStatus,
+        errorCode: parsed.errorCode,
+      };
+    }
+
+    return parseAttachResponseBody(body, res.status);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+/** True if Smartsheet attachment size (sizeInKb) matches our byte size within ~1 KiB */
+export function smartsheetAttachmentMatchesSize(
+  sizeInKb: number | undefined,
+  sizeBytes: number
+): boolean {
+  if (typeof sizeInKb !== "number" || !Number.isFinite(sizeInKb)) return true;
+  const fromSheet = Math.round(sizeInKb * 1024);
+  return Math.abs(fromSheet - sizeBytes) <= 1024;
 }

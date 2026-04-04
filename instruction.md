@@ -38,8 +38,10 @@ Reviewer entry URL:
 - **Code changed** (`.ts`, `.tsx`, `.sql`, docs, etc.): commit and push to GitHub. Vercel deploys from the push.
 - **Environment variables changed in Vercel**: redeploy in Vercel. No commit needed for env-var-only changes.
 - **Database schema changed** (new migration file or code depending on new tables/columns): apply the SQL migration to the target database separately. A Vercel deploy does not run migrations automatically.
+- **Database schema changed and a new `public` table was added**: include `ENABLE ROW LEVEL SECURITY` for that table in the same migration. Do not leave new backend-owned `public` tables exposed until a later cleanup.
 - **Code + env vars both changed**: commit and push first, then redeploy in Vercel so the new deployment picks up the new env vars.
 - **Supabase Security Advisor warns that public tables have RLS disabled**: apply the latest migration set. The app now expects public app tables to have RLS enabled because those tables are backend-owned and should not be exposed through Supabase's Data API.
+- **After any migration that adds or changes backend-owned `public` tables**: rerun Supabase Security Advisor and treat `rls_disabled_in_public` findings as a deployment issue, not a low-priority note.
 
 ---
 

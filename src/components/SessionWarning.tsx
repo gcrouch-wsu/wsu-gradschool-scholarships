@@ -7,7 +7,6 @@ export function SessionWarning() {
   const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
     async function check() {
       const res = await fetch("/api/auth/session-status");
       if (!res.ok) return;
@@ -19,8 +18,10 @@ export function SessionWarning() {
         setShow(false);
       }
     }
-    check();
-    interval = setInterval(check, 60_000);
+    void check();
+    const interval = setInterval(() => {
+      void check();
+    }, 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -28,7 +29,8 @@ export function SessionWarning() {
 
   return (
     <div
-      role="alert"
+      role="status"
+      aria-live="polite"
       className="fixed bottom-4 left-4 right-4 z-50 rounded-lg border border-amber-300 bg-amber-50 p-4 shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
     >
       <p className="font-medium text-amber-900">

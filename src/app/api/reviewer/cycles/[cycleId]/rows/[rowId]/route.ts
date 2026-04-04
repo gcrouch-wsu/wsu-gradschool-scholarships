@@ -2,53 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getSmartsheetWriteTimeoutMs } from "@/lib/db";
-import { getLiveColumnIds } from "@/lib/reviewer";
+import { getLiveColumnIds, getReviewerRowContext } from "@/lib/reviewer";
 import { query } from "@/lib/db";
-import { decrypt } from "@/lib/encryption";
 import { getEffectiveReviewerConfig } from "@/lib/reviewer-config";
 import {
   getReviewerRoleFields,
   getVisibleReviewerRoleFields,
 } from "@/lib/reviewer-field-access";
-import { getSheetRows, updateRowCells } from "@/lib/smartsheet";
+import { updateRowCells } from "@/lib/smartsheet";
 
 async function getRowData(cycleId: string, userId: string, rowId: number) {
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
-     JOIN scholarship_cycles c ON c.id = m.cycle_id
-     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
-    [userId, cycleId]
-  );
-  if (membership.length === 0) return null;
-
-  const { rows: cycles } = await query<{
-    connection_id: string;
-    sheet_id: number;
-  }>(
-    "SELECT connection_id, sheet_id FROM scholarship_cycles WHERE id = $1",
-    [cycleId]
-  );
-  const cycle = cycles[0];
-  if (!cycle?.connection_id || !cycle.sheet_id) return null;
-
-  const { rows: conn } = await query<{ encrypted_credentials: string }>(
-    "SELECT encrypted_credentials FROM connections WHERE id = $1",
-    [cycle.connection_id]
-  );
-  if (!conn[0]?.encrypted_credentials) return null;
-
-  let token: string;
-  try {
-    token = decrypt(conn[0].encrypted_credentials);
-  } catch {
-    return null;
-  }
-
-  const result = await getSheetRows(token, cycle.sheet_id);
-  if (!result.ok || !result.rows) return null;
-
-  const row = result.rows.find((r) => r.id === rowId);
-  return row ? { row, token, sheetId: cycle.sheet_id, roleId: membership[0]!.role_id } : null;
+  const ctx = await getReviewerRowContext(userId, cycleId, rowId);
+  if (!ctx) return null;
+  return {
+    row: ctx.row,
+    token: ctx.token,
+    sheetId: ctx.sheetId,
+    roleId: ctx.roleId,
+  };
 }
 
 export async function GET(

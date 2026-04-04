@@ -27,6 +27,16 @@ describe("attachment export helpers", () => {
         original_filename: "resume.pdf",
       })
     ).toBe("submission-b3be2d40/resume_upload/f4d25217-resume.pdf");
+
+    expect(
+      buildAttachmentExportZipPath({
+        id: "f4d25217-1111-2222-3333-444444444444",
+        submission_id: "b3be2d40-1111-2222-3333-444444444444",
+        field_key: "resume_upload",
+        original_filename: "resume.pdf",
+        display_filename: 'Smartsheet "copy".pdf',
+      })
+    ).toBe("submission-b3be2d40/resume_upload/f4d25217-Smartsheet _copy_.pdf");
   });
 
   it("builds stable download names", () => {

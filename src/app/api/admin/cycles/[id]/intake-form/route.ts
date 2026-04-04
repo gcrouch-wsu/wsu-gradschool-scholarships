@@ -16,6 +16,38 @@ import {
 
 export const runtime = "nodejs";
 
+interface IntakeFormRow {
+  id: string;
+  cycle_id: string;
+  title: string;
+  instructions_text: string | null;
+  status: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  published_version_id: string | null;
+  layout_json: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+interface IntakeFieldRow {
+  id: string;
+  intake_form_id: string;
+  field_key: string;
+  label: string;
+  help_text: string | null;
+  field_type: string;
+  required: boolean;
+  sort_order: number;
+  target_column_id: number | null;
+  target_column_title: string | null;
+  target_column_type: string | null;
+  settings_json: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  push_to_smartsheet?: boolean;
+}
+
 /**
  * GET: Get form schema + fields for builder
  * POST: Create/Initialize form for cycle (idempotent)
@@ -42,14 +74,14 @@ export async function GET(
     );
   }
 
-  const { rows: forms } = await query<any>(
+  const { rows: forms } = await query<IntakeFormRow>(
     "SELECT * FROM intake_forms WHERE cycle_id = $1",
     [cycleId]
   );
   const form = forms[0];
   if (!form) return NextResponse.json({ form: null });
 
-  const { rows: fields } = await query<any>(
+  const { rows: fields } = await query<IntakeFieldRow>(
     "SELECT * FROM intake_form_fields WHERE intake_form_id = $1 ORDER BY sort_order ASC",
     [form.id]
   );
@@ -61,7 +93,7 @@ export async function GET(
         form.layout_json,
         buildIntakeLayoutFromFields(fields),
         {
-          knownFieldKeys: fields.map((field: { field_key: string }) => field.field_key),
+          knownFieldKeys: fields.map((field) => field.field_key),
           requireAllPlaced: false,
           allowedSectionKeys: ["main"],
         }

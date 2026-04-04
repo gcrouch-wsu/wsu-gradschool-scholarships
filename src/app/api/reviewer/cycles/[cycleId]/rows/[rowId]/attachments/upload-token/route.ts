@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { getSessionUser } from "@/lib/auth";
-import { query } from "@/lib/db";
+import { getReviewerRowContext } from "@/lib/reviewer";
 import {
   buildReviewerAttachmentBlobPath,
   formatReviewerAttachmentSchemaUnavailableMessage,
@@ -40,14 +40,12 @@ export async function POST(
     );
   }
 
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
-     JOIN scholarship_cycles c ON c.id = m.cycle_id
-     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
-    [user.id, cycleId]
-  );
-  if (membership.length === 0) {
-    return NextResponse.json({ error: "Not assigned to this cycle" }, { status: 403 });
+  const ctx = await getReviewerRowContext(user.id, cycleId, rowIdNum);
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Row not found or access denied" },
+      { status: 404 }
+    );
   }
 
   const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
@@ -55,7 +53,7 @@ export async function POST(
     getReviewerRoleFields(
       effectiveConfig.fieldConfigs,
       effectiveConfig.permissions,
-      membership[0]!.role_id,
+      ctx.roleId,
       effectiveConfig.viewConfig?.settings_json
     )
   );

@@ -11,7 +11,13 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { cycleId, userId, roleId } = body;
+  const { cycleId, userId, roleId, filterCriteria } = body as {
+    cycleId?: string;
+    userId?: string;
+    roleId?: string;
+    /** Optional Smartsheet column rules; see `membership-row-filter.ts` for JSON shape. */
+    filterCriteria?: unknown;
+  };
   if (!cycleId) {
     return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
   }
@@ -74,13 +80,29 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const filterPayload =
+    filterCriteria !== undefined
+      ? filterCriteria === null
+        ? null
+        : JSON.stringify(filterCriteria)
+      : undefined;
+
   try {
-    await query(
-      `INSERT INTO scholarship_memberships (cycle_id, user_id, role_id, status)
-       VALUES ($1, $2, $3, 'active')
-       ON CONFLICT (cycle_id, user_id) DO UPDATE SET role_id = $3, status = 'active'`,
-      [cycleId, userId, roleId]
-    );
+    if (filterPayload !== undefined) {
+      await query(
+        `INSERT INTO scholarship_memberships (cycle_id, user_id, role_id, status, filter_criteria_json)
+         VALUES ($1, $2, $3, 'active', $4::jsonb)
+         ON CONFLICT (cycle_id, user_id) DO UPDATE SET role_id = $3, status = 'active', filter_criteria_json = $4::jsonb`,
+        [cycleId, userId, roleId, filterPayload]
+      );
+    } else {
+      await query(
+        `INSERT INTO scholarship_memberships (cycle_id, user_id, role_id, status)
+         VALUES ($1, $2, $3, 'active')
+         ON CONFLICT (cycle_id, user_id) DO UPDATE SET role_id = $3, status = 'active'`,
+        [cycleId, userId, roleId]
+      );
+    }
     await logAudit({
       actorUserId: user.id,
       cycleId,

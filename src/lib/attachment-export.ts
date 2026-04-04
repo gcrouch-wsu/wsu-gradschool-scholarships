@@ -3,6 +3,8 @@ export interface AttachmentExportRecord {
   submission_id: string;
   field_key: string;
   original_filename: string;
+  /** Preferred label inside the ZIP when it differs from `original_filename` (e.g. Smartsheet name). */
+  display_filename?: string | null;
 }
 
 const PATH_UNSAFE_CHARS = /[<>:"/\\|?*\u0000-\u001F]+/g;
@@ -39,7 +41,11 @@ export function buildAttachmentExportZipPath(file: AttachmentExportRecord): stri
     "submission"
   );
   const fieldSegment = sanitizeZipPathSegment(file.field_key, "attachment");
-  const filename = sanitizeZipFilename(file.original_filename);
+  const baseName =
+    typeof file.display_filename === "string" && file.display_filename.trim() !== ""
+      ? file.display_filename.trim()
+      : file.original_filename;
+  const filename = sanitizeZipFilename(baseName);
   const uniquePrefix = sanitizeZipPathSegment(file.id.slice(0, 8), "file");
 
   return `${submissionSegment}/${fieldSegment}/${uniquePrefix}-${filename}`;

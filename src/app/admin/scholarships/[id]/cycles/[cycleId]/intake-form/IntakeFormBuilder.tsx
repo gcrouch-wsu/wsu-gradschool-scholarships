@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "./RichTextEditor";
@@ -47,6 +47,7 @@ interface IntakeField {
   target_column_title: string | null;
   target_column_type: string | null;
   settings_json: Record<string, unknown>;
+  push_to_smartsheet?: boolean;
 }
 
 interface IntakeSubmissionSummary {
@@ -198,6 +199,19 @@ export default function IntakeFormBuilder({
     createDraftLayout(createEmptyLayout(), INTAKE_LAYOUT_SECTIONS)
   );
 
+  const loadSubmissions = useCallback(async () => {
+    setLoadingSubmissions(true);
+    try {
+      const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions`);
+      const data = await res.json();
+      setSubmissions(data.submissions || []);
+    } catch {
+      console.error("Failed to load submissions");
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  }, [cycleId]);
+
   useEffect(() => {
     async function load() {
       try {
@@ -220,28 +234,15 @@ export default function IntakeFormBuilder({
         );
         setColumns(cycleData.columns || []);
         
-        loadSubmissions();
-      } catch (err) {
+        void loadSubmissions();
+      } catch {
         setError("Failed to load intake form data");
       } finally {
         setLoading(false);
       }
     }
-    load();
-  }, [cycleId]);
-
-  const loadSubmissions = async () => {
-    setLoadingSubmissions(true);
-    try {
-      const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions`);
-      const data = await res.json();
-      setSubmissions(data.submissions || []);
-    } catch (err) {
-      console.error("Failed to load submissions");
-    } finally {
-      setLoadingSubmissions(false);
-    }
-  };
+    void load();
+  }, [cycleId, loadSubmissions]);
 
   const addField = (type: string, overrides: Partial<IntakeField> = {}) => {
     const key = overrides.field_key || createUniqueFieldKey(overrides.label || `field_${Date.now()}`, fields);
@@ -255,7 +256,8 @@ export default function IntakeFormBuilder({
       target_column_id: overrides.target_column_id ?? null,
       target_column_title: overrides.target_column_title ?? null,
       target_column_type: overrides.target_column_type ?? null,
-      settings_json: overrides.settings_json ?? getDefaultSettingsForFieldType(type)
+      settings_json: overrides.settings_json ?? getDefaultSettingsForFieldType(type),
+      push_to_smartsheet: type === "file" ? Boolean(overrides.push_to_smartsheet) : false,
     };
     setFields([...fields, newField]);
     setLayoutDraft((current) => appendFieldAsFullRow(current, newField.field_key, "main"));
@@ -331,8 +333,8 @@ export default function IntakeFormBuilder({
       setSuccess("Configuration saved successfully");
       router.refresh();
       return true;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Save failed");
       return false;
     } finally {
       setSaving(false);
@@ -361,8 +363,8 @@ export default function IntakeFormBuilder({
       const dataRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`);
       const data = await dataRes.json();
       setForm(data.form);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Publish failed");
     } finally {
       setPublishing(false);
     }
@@ -379,8 +381,8 @@ export default function IntakeFormBuilder({
       const dataRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`);
       const data = await dataRes.json();
       setForm(data.form);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unpublish failed");
     }
   };
 
@@ -394,8 +396,8 @@ export default function IntakeFormBuilder({
       }
       setSuccess("Retry initiated successfully");
       loadSubmissions();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Retry failed");
     }
   };
 
@@ -406,8 +408,8 @@ export default function IntakeFormBuilder({
       if (!res.ok) throw new Error("Delete failed");
       setSuccess("Submission record deleted");
       loadSubmissions();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Delete failed");
     }
   };
 
@@ -428,8 +430,8 @@ export default function IntakeFormBuilder({
       }
       router.push(`/admin/scholarships/${programId}/cycles/${cycleId}`);
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Delete form failed");
     }
   };
 
@@ -442,8 +444,8 @@ export default function IntakeFormBuilder({
       }
       setSuccess("Submission marked resolved");
       loadSubmissions();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Resolve failed");
     }
   };
 
@@ -797,7 +799,8 @@ export default function IntakeFormBuilder({
                 {field.field_type === "file" && (
                   <div className="sm:col-span-2 rounded border border-dashed border-zinc-300 bg-white px-3 py-3">
                     <p className="text-xs text-zinc-600">
-                      File uploads stay in secure app storage and appear in reviewer attachments. They are not mapped directly to a Smartsheet column.
+                      File uploads stay in secure app storage and appear in reviewer attachments. They are not mapped
+                      directly to a Smartsheet column.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-4">
                       <label className="flex items-center gap-2 text-sm">
@@ -822,6 +825,23 @@ export default function IntakeFormBuilder({
                           className="rounded border-zinc-300"
                         />
                         Allow multiple PDFs
+                      </label>
+                      <label className="flex max-w-md items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(field.push_to_smartsheet)}
+                          onChange={(e) =>
+                            updateField(idx, {
+                              push_to_smartsheet: e.target.checked,
+                            })
+                          }
+                          className="mt-0.5 rounded border-zinc-300"
+                        />
+                        <span>
+                          <span className="font-medium">Push uploaded files to Smartsheet</span> as native attachments
+                          on the nominee row. Maximum file size becomes <strong>30 MB</strong> for this field. Anyone with
+                          access to the sheet can open mirrored files.
+                        </span>
                       </label>
                     </div>
                   </div>

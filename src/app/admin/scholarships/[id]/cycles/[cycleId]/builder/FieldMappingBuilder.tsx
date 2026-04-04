@@ -361,6 +361,7 @@ interface ViewSection {
 }
 
 /** Preview of reviewer layout — reacts to viewType and has working dropdowns */
+/* eslint-disable @typescript-eslint/no-unused-vars -- reserved for future in-builder preview */
 function LayoutPreview({
   mapped,
   viewType,
@@ -608,6 +609,7 @@ function LayoutPreview({
     </div>
   );
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /** Inline color picker: native color input + hex text field + WSU palette dropdown */
 function ColorSwatch({

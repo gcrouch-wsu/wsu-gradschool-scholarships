@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { del } from "@vercel/blob";
 import { query } from "@/lib/db";
 import { checkRateLimit } from "@/lib/intake";
+import type { PublishedIntakeSnapshot } from "@/lib/intake";
 import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
@@ -49,7 +50,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid blob pathname" }, { status: 400 });
   }
 
-  const { rows } = await query<any>(
+  const { rows } = await query<{ snapshot_json: PublishedIntakeSnapshot }>(
     `SELECT v.snapshot_json
      FROM intake_forms f
      JOIN intake_form_versions v ON v.id = f.published_version_id
@@ -57,7 +58,7 @@ export async function POST(
     [cycleId]
   );
   const snapshot = rows[0]?.snapshot_json;
-  const field = snapshot?.fields?.find((candidate: any) => candidate.field_key === fieldKey);
+  const field = snapshot?.fields?.find((candidate) => candidate.field_key === fieldKey);
   if (!field || field.field_type !== "file") {
     return NextResponse.json({ error: "Invalid file field" }, { status: 400 });
   }

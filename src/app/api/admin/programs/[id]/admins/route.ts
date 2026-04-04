@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { canManageProgram } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
 

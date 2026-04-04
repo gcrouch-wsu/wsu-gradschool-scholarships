@@ -24,6 +24,46 @@ import {
 
 export const runtime = "nodejs";
 
+interface IntakeFormRecord {
+  id: string;
+  title: string;
+  instructions_text: string | null;
+  opens_at: string | null;
+  closes_at: string | null;
+  layout_json: unknown;
+}
+
+interface IntakeFieldRecord {
+  field_key: string;
+  label: string;
+  help_text: string | null;
+  field_type: string;
+  required: boolean;
+  sort_order: number;
+  target_column_id: number | null;
+  target_column_title: string | null;
+  target_column_type: string | null;
+  settings_json: Record<string, unknown> | null;
+  push_to_smartsheet?: boolean;
+}
+
+interface SheetColumnSnapshot {
+  id: number | string;
+  type: string;
+  options?: string[];
+}
+
+interface CycleSchemaSnapshotRow {
+  sheet_id: number | null;
+  sheet_schema_snapshot_json: { columns: SheetColumnSnapshot[] } | null;
+}
+
+function picklistOptionsFromSettings(settings: Record<string, unknown> | null): string[] {
+  const opts = settings?.options;
+  if (!Array.isArray(opts)) return [];
+  return opts.filter((o): o is string => typeof o === "string");
+}
+
 /**
  * POST: Publish the current draft of the intake form.
  */
@@ -47,15 +87,18 @@ export async function POST(
     );
   }
 
-  const { rows: forms } = await query<any>(
-    "SELECT * FROM intake_forms WHERE cycle_id = $1",
+  const { rows: forms } = await query<IntakeFormRecord>(
+    "SELECT id, title, instructions_text, opens_at, closes_at, layout_json FROM intake_forms WHERE cycle_id = $1",
     [cycleId]
   );
   const form = forms[0];
   if (!form) return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
 
-  const { rows: fields } = await query<any>(
-    "SELECT * FROM intake_form_fields WHERE intake_form_id = $1 ORDER BY sort_order ASC",
+  const { rows: fields } = await query<IntakeFieldRecord>(
+    `SELECT field_key, label, help_text, field_type, required, sort_order,
+            target_column_id, target_column_title, target_column_type, settings_json,
+            push_to_smartsheet
+     FROM intake_form_fields WHERE intake_form_id = $1 ORDER BY sort_order ASC`,
     [form.id]
   );
 
@@ -65,7 +108,7 @@ export async function POST(
 
   // Section 16: Publish rules
   // 1. All mapped columns exist in the current schema snapshot
-  const { rows: cycles } = await query<any>(
+  const { rows: cycles } = await query<CycleSchemaSnapshotRow>(
     "SELECT sheet_id, sheet_schema_snapshot_json FROM scholarship_cycles WHERE id = $1",
     [cycleId]
   );
@@ -75,7 +118,9 @@ export async function POST(
   }
 
   const snapshot = cycleData.sheet_schema_snapshot_json;
-  const liveColumns = new Map<string, any>(snapshot.columns.map((c: any) => [String(c.id), c]));
+  const liveColumns = new Map<string, SheetColumnSnapshot>(
+    snapshot.columns.map((c) => [String(c.id), c])
+  );
 
   for (const f of fields) {
     if (!(INTAKE_ALLOWED_FIELD_TYPES as readonly string[]).includes(f.field_type)) {
@@ -107,8 +152,8 @@ export async function POST(
     }
     // all select options match the target Smartsheet picklist options
     if (f.field_type === "select" && liveCol.type === "PICKLIST") {
-      const fieldOptions = (f.settings_json as any)?.options || [];
-      const colOptions = (liveCol as any).options || [];
+      const fieldOptions = picklistOptionsFromSettings(f.settings_json);
+      const colOptions = liveCol.options ?? [];
       if (fieldOptions.length !== colOptions.length) {
         return NextResponse.json({ error: `Field "${f.label}" options must match the Smartsheet picklist exactly` }, { status: 400 });
       }
@@ -133,7 +178,7 @@ export async function POST(
     opens_at: form.opens_at,
     closes_at: form.closes_at,
     layout_json: null as unknown,
-    fields: fields.map(f => ({
+    fields: fields.map((f) => ({
       field_key: f.field_key,
       label: f.label,
       help_text: f.help_text,
@@ -143,7 +188,8 @@ export async function POST(
       target_column_id: f.target_column_id,
       target_column_title: f.target_column_title,
       target_column_type: f.target_column_type,
-      settings_json: f.settings_json
+      settings_json: f.settings_json,
+      ...(f.field_type === "file" ? { push_to_smartsheet: Boolean(f.push_to_smartsheet) } : {}),
     }))
   };
 

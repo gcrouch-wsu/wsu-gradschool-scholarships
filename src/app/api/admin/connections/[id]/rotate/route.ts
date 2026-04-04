@@ -39,7 +39,7 @@ export async function POST(
   let encrypted: string;
   try {
     encrypted = encrypt(trimmed);
-  } catch (err) {
+  } catch {
     return NextResponse.json(
       { error: "Encryption not configured. Set ENCRYPTION_KEY." },
       { status: 500 }

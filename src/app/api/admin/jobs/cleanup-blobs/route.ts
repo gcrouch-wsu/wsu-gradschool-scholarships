@@ -28,33 +28,59 @@ export async function GET(request: NextRequest) {
   }
 
   const { blobs } = await list({ prefix: "intake/", token: process.env.BLOB_READ_WRITE_TOKEN });
-  
+
   const now = new Date();
   const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  
+
   const orphaned: string[] = [];
-  
+
   for (const blob of blobs) {
     if (new Date(blob.uploadedAt) > twentyFourHoursAgo) continue;
-    
-    // Check if exists in DB
+
     const { rows } = await query(
       "SELECT id FROM intake_submission_files WHERE blob_pathname = $1",
       [blob.pathname]
     );
-    
+
     if (rows.length === 0) {
       orphaned.push(blob.pathname);
     }
   }
-  
-  if (orphaned.length > 0) {
-    await del(orphaned, { token: process.env.BLOB_READ_WRITE_TOKEN });
+
+  const mirroredDelete: string[] = [];
+  if (intakeSchema.available) {
+    const { rows: ready } = await query<{ id: string; blob_pathname: string }>(
+      `SELECT id, blob_pathname FROM intake_submission_files
+       WHERE attachment_sync_status = 'synced'
+         AND smartsheet_attachment_id IS NOT NULL
+         AND blob_delete_after IS NOT NULL
+         AND blob_delete_after <= now()
+         AND blob_deleted_at IS NULL`
+    );
+    for (const row of ready) {
+      mirroredDelete.push(row.blob_pathname);
+    }
   }
 
-  return NextResponse.json({ 
+  const toDelete = [...new Set([...orphaned, ...mirroredDelete])];
+
+  if (toDelete.length > 0) {
+    await del(toDelete, { token: process.env.BLOB_READ_WRITE_TOKEN });
+  }
+
+  if (intakeSchema.available && mirroredDelete.length > 0) {
+    await query(
+      `UPDATE intake_submission_files
+       SET attachment_sync_status = 'deleted_from_blob', blob_deleted_at = now()
+       WHERE blob_pathname = ANY($1::text[])`,
+      [mirroredDelete]
+    );
+  }
+
+  return NextResponse.json({
     processed: blobs.length,
-    deleted: orphaned.length,
-    pathnames: orphaned
+    deleted: toDelete.length,
+    pathnames: toDelete,
+    mirroredStagedDeletes: mirroredDelete.length,
   });
 }

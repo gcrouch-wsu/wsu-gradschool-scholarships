@@ -31,6 +31,16 @@ export const INTAKE_ALLOWED_COLUMN_TYPES = [
 ] as const;
 
 export const MAX_INTAKE_FILE_SIZE_BYTES = 104857600;
+/** Smartsheet mirror cap for push-enabled intake file fields */
+export const MAX_SMARTSHEET_MIRROR_FILE_BYTES = 30 * 1024 * 1024;
+
+export function fieldPushToSmartsheet(field: PublishedIntakeField): boolean {
+  return field.field_type === "file" && Boolean(field.push_to_smartsheet);
+}
+
+export function maxFileSizeBytesForIntakeField(field: PublishedIntakeField): number {
+  return fieldPushToSmartsheet(field) ? MAX_SMARTSHEET_MIRROR_FILE_BYTES : MAX_INTAKE_FILE_SIZE_BYTES;
+}
 
 const DEV_HMAC_SECRET = "dev-secret";
 const SUBMITTER_EMAIL_SUFFIX = "@wsu.edu";
@@ -62,6 +72,8 @@ export interface PublishedIntakeField {
   target_column_title?: string | null;
   target_column_type?: IntakeColumnType | string | null;
   settings_json?: Record<string, unknown> | null;
+  /** Mirror PDFs to Smartsheet as native FILE attachments (30 MB cap) */
+  push_to_smartsheet?: boolean;
 }
 
 export interface PublishedIntakeSnapshot {
@@ -69,10 +81,12 @@ export interface PublishedIntakeSnapshot {
   instructions_text?: string | null;
   opens_at?: string | null;
   closes_at?: string | null;
+  /** Present on stored snapshots after layout work; omit on minimal types. */
+  layout_json?: unknown;
   fields: PublishedIntakeField[];
 }
 
-interface UploadedFileInput {
+export interface UploadedFileInput {
   fieldKey: string;
   uploadId?: string;
   blobPathname?: string;
@@ -415,8 +429,11 @@ async function verifyUploadedFiles(args: {
     if (file.contentType !== "application/pdf") {
       return { ok: false, error: `Field "${file.fieldKey}" must be a PDF` };
     }
-    if (file.sizeBytes > MAX_INTAKE_FILE_SIZE_BYTES) {
-      return { ok: false, error: `Field "${file.fieldKey}" exceeds the 100 MB limit` };
+    const fieldDef = fileFieldsByKey.get(file.fieldKey)!;
+    const maxBytes = maxFileSizeBytesForIntakeField(fieldDef);
+    if (file.sizeBytes > maxBytes) {
+      const capLabel = fieldPushToSmartsheet(fieldDef) ? "30 MB" : "100 MB";
+      return { ok: false, error: `Field "${file.fieldKey}" exceeds the ${capLabel} limit` };
     }
     if (!file.blobPathname) {
       return { ok: false, error: `Field "${file.fieldKey}" is missing blob metadata` };
@@ -442,8 +459,11 @@ async function verifyUploadedFiles(args: {
     if (blobMeta.contentType !== "application/pdf") {
       return { ok: false, error: `Field "${file.fieldKey}" is not stored as a PDF` };
     }
-    if (blobMeta.size > MAX_INTAKE_FILE_SIZE_BYTES) {
-      return { ok: false, error: `Field "${file.fieldKey}" exceeds the 100 MB limit` };
+    const fieldDef2 = fileFieldsByKey.get(file.fieldKey)!;
+    const maxBytes2 = maxFileSizeBytesForIntakeField(fieldDef2);
+    if (blobMeta.size > maxBytes2) {
+      const capLabel2 = fieldPushToSmartsheet(fieldDef2) ? "30 MB" : "100 MB";
+      return { ok: false, error: `Field "${file.fieldKey}" exceeds the ${capLabel2} limit` };
     }
 
     verifiedFiles.push({
@@ -877,14 +897,21 @@ export async function processSubmission(params: {
       );
       const existingBlobPathnames = new Set(existingFiles.map((file) => file.blob_pathname));
 
+      const fieldsByKey = new Map(snapshot.fields.map((f) => [f.field_key, f]));
+
       for (const file of payloadValidation.normalizedFiles) {
         if (existingBlobPathnames.has(file.blobPathname)) continue;
+
+        const fileField = fieldsByKey.get(file.fieldKey);
+        const attachmentSyncStatus =
+          fileField && fieldPushToSmartsheet(fileField) ? "pending" : "not_applicable";
 
         await query(
           `INSERT INTO intake_submission_files (
             submission_id, cycle_id, field_key, blob_url, blob_pathname,
-            original_filename, content_type, size_bytes, smartsheet_row_id
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            original_filename, content_type, size_bytes, smartsheet_row_id,
+            attachment_sync_status
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             params.submissionId,
             params.cycleId,
@@ -895,6 +922,7 @@ export async function processSubmission(params: {
             file.contentType,
             file.sizeBytes,
             rowId,
+            attachmentSyncStatus,
           ]
         );
         existingBlobPathnames.add(file.blobPathname);

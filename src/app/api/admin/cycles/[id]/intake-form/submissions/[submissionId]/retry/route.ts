@@ -2,13 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { canManageCycle } from "@/lib/admin";
 import { query } from "@/lib/db";
-import { processSubmission } from "@/lib/intake";
+import { processSubmission, type UploadedFileInput } from "@/lib/intake";
 import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
+
+interface IntakeSubmissionRetryRow {
+  intake_form_version_id: string | null;
+  submitter_email: string | null;
+  request_cells_json: Record<string, unknown>;
+  request_files_json: unknown;
+}
 
 /**
  * POST: Retry a failed submission.
@@ -33,14 +40,23 @@ export async function POST(
     );
   }
 
-  const { rows } = await query<any>(
-    "SELECT * FROM intake_submissions WHERE submission_id = $1 AND cycle_id = $2",
+  const { rows } = await query<IntakeSubmissionRetryRow>(
+    `SELECT intake_form_version_id, submitter_email, request_cells_json, request_files_json
+     FROM intake_submissions WHERE submission_id = $1 AND cycle_id = $2`,
     [submissionId, cycleId]
   );
   const submission = rows[0];
   if (!submission) {
     return NextResponse.json({ error: "Submission not found" }, { status: 404 });
   }
+  if (!submission.intake_form_version_id || !submission.submitter_email) {
+    return NextResponse.json({ error: "Submission is missing version or email" }, { status: 400 });
+  }
+
+  const filesRaw = submission.request_files_json;
+  const files: UploadedFileInput[] = Array.isArray(filesRaw)
+    ? (filesRaw as UploadedFileInput[])
+    : [];
 
   try {
     const result = await processSubmission({
@@ -49,7 +65,7 @@ export async function POST(
       formVersionId: submission.intake_form_version_id,
       submitterEmail: submission.submitter_email,
       fields: submission.request_cells_json,
-      files: submission.request_files_json,
+      files,
       ip: "0.0.0.0" // Not relevant for admin retry
     });
 

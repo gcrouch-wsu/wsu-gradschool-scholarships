@@ -7,18 +7,20 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
-const SALT_LENGTH = 32;
-const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 
+let cachedDerivedKey: Buffer | null = null;
+
 function getKey(): Buffer {
+  if (cachedDerivedKey) return cachedDerivedKey;
   const raw = process.env.ENCRYPTION_KEY;
   if (!raw || raw.length < 32) {
     throw new Error(
       "ENCRYPTION_KEY must be set (32+ chars) for credential encryption"
     );
   }
-  return scryptSync(raw, "scholarship-review-platform", KEY_LENGTH);
+  cachedDerivedKey = scryptSync(raw, "scholarship-review-platform", KEY_LENGTH);
+  return cachedDerivedKey;
 }
 
 export function encrypt(plaintext: string): string {

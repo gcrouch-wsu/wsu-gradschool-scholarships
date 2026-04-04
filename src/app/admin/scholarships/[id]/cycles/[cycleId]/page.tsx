@@ -11,6 +11,7 @@ import { CycleStatusToggle } from "./CycleStatusToggle";
 import { ExternalReviewersToggle } from "./ExternalReviewersToggle";
 import { PublishConfigButton } from "./PublishConfigButton";
 import { RemoveAssignmentButton } from "./RemoveAssignmentButton";
+import { ReviewerRowFilterEditor } from "./ReviewerRowFilterEditor";
 import { SchemaDriftWarning } from "./SchemaDriftWarning";
 import { RenameCycleForm } from "./RenameCycleForm";
 import { DeleteCycleButton } from "./DeleteCycleButton";
@@ -77,8 +78,10 @@ export default async function CycleDetailPage({
     sheet_name: string | null;
     schema_synced_at: string | null;
     allow_external_reviewers: boolean;
+    sheet_schema_snapshot_json: unknown;
   }>(
-    `SELECT id, program_id, cycle_key, cycle_label, status, connection_id, sheet_id, sheet_name, schema_synced_at, allow_external_reviewers
+    `SELECT id, program_id, cycle_key, cycle_label, status, connection_id, sheet_id, sheet_name, schema_synced_at, allow_external_reviewers,
+            sheet_schema_snapshot_json
      FROM scholarship_cycles WHERE id = $1 AND program_id = $2`,
     [cycleId, programId]
   );
@@ -122,12 +125,14 @@ export default async function CycleDetailPage({
 
   const { rows: memberships } = await query<{
     user_id: string;
+    role_id: string;
     email: string;
     first_name: string;
     last_name: string;
     role_label: string;
+    filter_criteria_json: unknown;
   }>(
-    `SELECT m.user_id, u.email, u.first_name, u.last_name, r.label as role_label
+    `SELECT m.user_id, m.role_id, m.filter_criteria_json, u.email, u.first_name, u.last_name, r.label as role_label
      FROM scholarship_memberships m
      JOIN users u ON u.id = m.user_id
      JOIN roles r ON r.id = m.role_id
@@ -135,6 +140,23 @@ export default async function CycleDetailPage({
      ORDER BY u.last_name, u.first_name`,
     [cycleId]
   );
+
+  const sheetColumnsForFilters: { id: number; title: string }[] = (() => {
+    const snap = cycle.sheet_schema_snapshot_json;
+    if (snap == null || typeof snap !== "object") return [];
+    const cols = (snap as { columns?: unknown }).columns;
+    if (!Array.isArray(cols)) return [];
+    return cols
+      .map((c) => {
+        if (c == null || typeof c !== "object") return null;
+        const o = c as { id?: unknown; title?: unknown };
+        const id = typeof o.id === "number" ? o.id : Number(o.id);
+        const title = typeof o.title === "string" ? o.title : "";
+        if (!Number.isFinite(id) || title === "") return null;
+        return { id, title };
+      })
+      .filter((x): x is { id: number; title: string } => x != null);
+  })();
 
   const { rows: latestConfig } = await query<{ id: string }>(
     "SELECT id FROM config_versions WHERE cycle_id = $1 ORDER BY version_number DESC LIMIT 1",
@@ -413,20 +435,31 @@ export default async function CycleDetailPage({
               {memberships.map((m) => (
                 <li
                   key={m.user_id}
-                  className="grid gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                  className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-zinc-900">
-                      {m.first_name} {m.last_name}
-                    </p>
-                    <p className="truncate text-sm text-zinc-500">{m.email}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-zinc-900">
+                        {m.first_name} {m.last_name}
+                      </p>
+                      <p className="truncate text-sm text-zinc-500">{m.email}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
+                        {m.role_label}
+                      </span>
+                      <RemoveAssignmentButton cycleId={cycleId} userId={m.user_id} />
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 md:justify-end">
-                    <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
-                      {m.role_label}
-                    </span>
-                    <RemoveAssignmentButton cycleId={cycleId} userId={m.user_id} />
-                  </div>
+                  <ReviewerRowFilterEditor
+                    key={`${m.user_id}-${JSON.stringify(m.filter_criteria_json ?? null)}`}
+                    cycleId={cycleId}
+                    userId={m.user_id}
+                    roleId={m.role_id}
+                    reviewerLabel={`${m.first_name} ${m.last_name}`}
+                    initialCriteria={m.filter_criteria_json}
+                    sheetColumns={sheetColumnsForFilters}
+                  />
                 </li>
               ))}
             </ul>

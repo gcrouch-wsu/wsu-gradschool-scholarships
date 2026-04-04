@@ -93,6 +93,8 @@ Migrations live in `supabase/migrations/`.
 3. Watch for smart quotes or other non-ASCII punctuation in JSX after AI/editor edits.
 4. Use `npx tsc --noEmit` as a fast precheck; treat `npm run build` as the final local verifier.
 5. Do not add `--webpack` unless a reproduced production-build regression is documented.
+6. Any new app-owned table added to `public` must enable RLS in the same migration that creates or exposes it.
+7. After applying schema changes on Supabase, rerun Security Advisor and treat new `rls_disabled_in_public` findings as release-blocking until fixed.
 
 ---
 
@@ -252,6 +254,8 @@ interface SavedLayoutJson {
 ---
 
 ## Next Build: Smartsheet Native Attachment Mirroring
+
+**Implementation order, engineering constraints, and design-review notes:** `BUILD.md`.
 
 ### Purpose and design decisions
 

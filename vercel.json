@@ -5,6 +5,10 @@
     {
       "path": "/api/admin/jobs/cleanup-blobs",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/admin/jobs/sync-smartsheet-attachments",
+      "schedule": "* * * * *"
     }
   ]
 }

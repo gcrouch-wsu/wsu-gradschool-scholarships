@@ -122,11 +122,7 @@ export default async function PreviewPage({
           cycleLabel={cycle.cycle_label}
         />
       ) : (
-        <PreviewNomineeList
-          cycleId={cycleId}
-          programId={programId}
-          cycleLabel={cycle.cycle_label}
-        />
+        <PreviewNomineeList cycleId={cycleId} programId={programId} />
       )}
     </div>
   );

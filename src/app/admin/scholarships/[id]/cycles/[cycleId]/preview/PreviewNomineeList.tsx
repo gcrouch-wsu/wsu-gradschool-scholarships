@@ -12,11 +12,9 @@ interface Nominee {
 export function PreviewNomineeList({
   cycleId,
   programId,
-  cycleLabel,
 }: {
   cycleId: string;
   programId: string;
-  cycleLabel: string;
 }) {
   const [rows, setRows] = useState<Nominee[]>([]);
   const [loading, setLoading] = useState(true);

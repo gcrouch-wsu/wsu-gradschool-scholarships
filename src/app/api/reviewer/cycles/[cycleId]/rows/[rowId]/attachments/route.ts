@@ -3,9 +3,9 @@ import { head } from "@vercel/blob";
 import { getSessionUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
-import { decrypt } from "@/lib/encryption";
-import { createSignedIntakeFileUrl } from "@/lib/intake";
+import { getReviewerRowContext } from "@/lib/reviewer";
 import { getIntakeSchemaStatus } from "@/lib/intake-schema";
+import { mergeIntakeWithSmartsheetAttachments } from "@/lib/intake-attachment-merge";
 import {
   buildReviewerAttachmentBlobPath,
   createSignedReviewerFileUrl,
@@ -38,14 +38,12 @@ export async function GET(
     return NextResponse.json({ error: "Invalid row ID" }, { status: 400 });
   }
 
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
-     JOIN scholarship_cycles c ON c.id = m.cycle_id
-     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
-    [user.id, cycleId]
-  );
-  if (membership.length === 0) {
-    return NextResponse.json({ error: "Not assigned to this cycle" }, { status: 403 });
+  const ctx = await getReviewerRowContext(user.id, cycleId, rowIdNum);
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Row not found or access denied" },
+      { status: 404 }
+    );
   }
 
   const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
@@ -53,7 +51,7 @@ export async function GET(
     getReviewerRoleFields(
       effectiveConfig.fieldConfigs,
       effectiveConfig.permissions,
-      membership[0]!.role_id,
+      ctx.roleId,
       effectiveConfig.viewConfig?.settings_json
     )
   );
@@ -65,40 +63,7 @@ export async function GET(
     );
   }
 
-  const { rows: cycles } = await query<{
-    connection_id: string;
-    sheet_id: number;
-  }>(
-    "SELECT connection_id, sheet_id FROM scholarship_cycles WHERE id = $1",
-    [cycleId]
-  );
-  const cycle = cycles[0];
-  if (!cycle?.connection_id || !cycle.sheet_id) {
-    return NextResponse.json(
-      { error: "Cycle has no sheet configured" },
-      { status: 400 }
-    );
-  }
-
-  const { rows: conn } = await query<{ encrypted_credentials: string }>(
-    "SELECT encrypted_credentials FROM connections WHERE id = $1",
-    [cycle.connection_id]
-  );
-  if (!conn[0]?.encrypted_credentials) {
-    return NextResponse.json({ error: "Connection not found" }, { status: 500 });
-  }
-
-  let token: string;
-  try {
-    token = decrypt(conn[0].encrypted_credentials);
-  } catch {
-    return NextResponse.json(
-      { error: "Could not decrypt credentials" },
-      { status: 500 }
-    );
-  }
-
-  const result = await getRowAttachments(token, cycle.sheet_id, rowIdNum);
+  const result = await getRowAttachments(ctx.token, ctx.sheetId, rowIdNum);
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error ?? "Failed to fetch attachments" },
@@ -113,8 +78,11 @@ export async function GET(
         await query<{
           id: string;
           original_filename: string;
+          attachment_sync_status: string;
+          smartsheet_attachment_id: string | number | null;
         }>(
-          "SELECT id, original_filename FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2",
+          `SELECT id, original_filename, attachment_sync_status, smartsheet_attachment_id
+           FROM intake_submission_files WHERE cycle_id = $1 AND smartsheet_row_id = $2`,
           [cycleId, rowIdNum]
         )
       ).rows
@@ -133,21 +101,10 @@ export async function GET(
       ).rows
     : [];
 
+  const mergedIntake = mergeIntakeWithSmartsheetAttachments(result.attachments ?? [], intakeFiles);
+
   const merged = [
-    ...(result.attachments ?? []).map((a) => ({
-      id: String(a.id),
-      name: a.name,
-      url: a.url,
-      source: "smartsheet" as const,
-      mimeType: a.mimeType,
-    })),
-    ...intakeFiles.map((f) => ({
-      id: f.id,
-      name: f.original_filename,
-      url: createSignedIntakeFileUrl(f.id),
-      source: "intake_upload" as const,
-      mimeType: "application/pdf",
-    })),
+    ...mergedIntake,
     ...reviewerFiles.map((f) => ({
       id: f.id,
       name: f.original_filename,
@@ -185,14 +142,12 @@ export async function POST(
     );
   }
 
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
-     JOIN scholarship_cycles c ON c.id = m.cycle_id
-     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
-    [user.id, cycleId]
-  );
-  if (membership.length === 0) {
-    return NextResponse.json({ error: "Not assigned to this cycle" }, { status: 403 });
+  const ctx = await getReviewerRowContext(user.id, cycleId, rowIdNum);
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Row not found or access denied" },
+      { status: 404 }
+    );
   }
 
   const effectiveConfig = await getEffectiveReviewerConfig(cycleId);
@@ -200,7 +155,7 @@ export async function POST(
     getReviewerRoleFields(
       effectiveConfig.fieldConfigs,
       effectiveConfig.permissions,
-      membership[0]!.role_id,
+      ctx.roleId,
       effectiveConfig.viewConfig?.settings_json
     )
   );

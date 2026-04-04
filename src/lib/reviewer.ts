@@ -3,6 +3,7 @@
  */
 import { query } from "./db";
 import { decrypt } from "./encryption";
+import { filterRowsByMembershipCriteria, rowMatchesMembershipFilter } from "./membership-row-filter";
 import { getEffectiveReviewerConfig } from "./reviewer-config";
 import { readReviewerVisibilitySettings } from "./reviewer-field-access";
 import { getSheetRows, getSheetSchema } from "./smartsheet";
@@ -35,12 +36,69 @@ export async function getLiveColumnIds(cycleId: string): Promise<Set<string> | n
   return new Set(result.sheet.columns.map((c) => String(c.id)));
 }
 
+/** Token + sheet row for a reviewer, or null if unassigned, row missing, or row excluded by filter_criteria_json. */
+export async function getReviewerRowContext(
+  userId: string,
+  cycleId: string,
+  rowId: number
+): Promise<{
+  token: string;
+  sheetId: number;
+  roleId: string;
+  row: { id: number; cells: Record<number, unknown> };
+} | null> {
+  const { rows: membership } = await query<{ role_id: string; filter_criteria_json: unknown }>(
+    `SELECT m.role_id, m.filter_criteria_json FROM scholarship_memberships m
+     JOIN scholarship_cycles c ON c.id = m.cycle_id
+     WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
+    [userId, cycleId]
+  );
+  if (membership.length === 0) return null;
+
+  const { rows: cycles } = await query<{
+    connection_id: string;
+    sheet_id: number;
+  }>(
+    "SELECT connection_id, sheet_id FROM scholarship_cycles WHERE id = $1",
+    [cycleId]
+  );
+  const cycle = cycles[0];
+  if (!cycle?.connection_id || !cycle.sheet_id) return null;
+
+  const { rows: conn } = await query<{ encrypted_credentials: string }>(
+    "SELECT encrypted_credentials FROM connections WHERE id = $1",
+    [cycle.connection_id]
+  );
+  if (!conn[0]?.encrypted_credentials) return null;
+
+  let token: string;
+  try {
+    token = decrypt(conn[0].encrypted_credentials);
+  } catch {
+    return null;
+  }
+
+  const result = await getSheetRows(token, cycle.sheet_id);
+  if (!result.ok || !result.rows) return null;
+
+  const row = result.rows.find((r) => r.id === rowId);
+  if (!row) return null;
+  if (!rowMatchesMembershipFilter(row, membership[0]!.filter_criteria_json)) return null;
+
+  return {
+    token,
+    sheetId: cycle.sheet_id,
+    roleId: membership[0]!.role_id,
+    row,
+  };
+}
+
 export async function getReviewerNominees(
   userId: string,
   cycleId: string
 ): Promise<{ id: number; displayName: string; identity: Record<string, unknown> }[] | null> {
-  const { rows: membership } = await query<{ role_id: string }>(
-    `SELECT role_id FROM scholarship_memberships m
+  const { rows: membership } = await query<{ role_id: string; filter_criteria_json: unknown }>(
+    `SELECT m.role_id, m.filter_criteria_json FROM scholarship_memberships m
      JOIN scholarship_cycles c ON c.id = m.cycle_id
      WHERE m.user_id = $1 AND m.cycle_id = $2 AND m.status = 'active' AND c.status = 'active'`,
     [userId, cycleId]
@@ -104,7 +162,12 @@ export async function getReviewerNominees(
   const result = await getSheetRows(token, cycle.sheet_id);
   if (!result.ok || !result.rows) return null;
 
-  return result.rows.map((row, index) => {
+  const filteredRows = filterRowsByMembershipCriteria(
+    result.rows,
+    membership[0]!.filter_criteria_json
+  );
+
+  return filteredRows.map((row, index) => {
     const identity: Record<string, unknown> = {};
     for (const f of identityFields) {
       identity[f.field_key] = row.cells[f.source_column_id] ?? "";

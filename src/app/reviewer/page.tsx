@@ -77,11 +77,11 @@ export default async function ReviewerPage() {
                 <Link
                   key={a.cycle_id}
                   href={`/reviewer/${a.cycle_id}`}
-                  className="block rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-zinc-300"
+                  className="group block rounded-lg border border-zinc-200 bg-white p-4 shadow-sm ring-offset-2 transition hover:border-[var(--wsu-crimson)]/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wsu-crimson)]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <span className="font-medium text-zinc-900">
+                      <span className="font-medium text-zinc-900 group-hover:text-[var(--wsu-crimson)]">
                         {a.program_name} – {a.cycle_label}
                       </span>
                       <span className="ml-2 text-sm text-zinc-500">

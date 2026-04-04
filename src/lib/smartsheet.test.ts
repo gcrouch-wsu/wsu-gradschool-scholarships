@@ -1,18 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { addRow } from "./smartsheet";
 
-global.fetch = vi.fn();
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", fetchMock as typeof fetch);
 
 describe("smartsheet addRow", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    fetchMock.mockReset();
   });
 
   it("sends correct payload and handles success", async () => {
-    (fetch as any).mockResolvedValue({
+    fetchMock.mockResolvedValue({
       ok: true,
+      status: 200,
       text: () => Promise.resolve(JSON.stringify({ result: [{ id: 456 }] })),
-    });
+    } as Response);
 
     const result = await addRow("token", 123, [
       { columnId: 1, value: "test" },
@@ -36,11 +38,11 @@ describe("smartsheet addRow", () => {
   });
 
   it("handles Smartsheet errors", async () => {
-    (fetch as any).mockResolvedValue({
+    fetchMock.mockResolvedValue({
       ok: false,
       status: 400,
       text: () => Promise.resolve(JSON.stringify({ errorCode: 1006, message: "Column not found" })),
-    });
+    } as Response);
 
     const result = await addRow("token", 123, [{ columnId: 1, value: "test" }]);
 

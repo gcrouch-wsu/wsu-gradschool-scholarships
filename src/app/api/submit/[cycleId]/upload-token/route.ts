@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { query } from "@/lib/db";
-import { buildBlobPathname, checkRateLimit, MAX_INTAKE_FILE_SIZE_BYTES } from "@/lib/intake";
+import {
+  buildBlobPathname,
+  checkRateLimit,
+  maxFileSizeBytesForIntakeField,
+} from "@/lib/intake";
+import type { PublishedIntakeField, PublishedIntakeSnapshot } from "@/lib/intake";
 import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
 
 export const runtime = "nodejs";
+
+interface UploadTokenFormRow {
+  id: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  form_status: string;
+  snapshot_json: PublishedIntakeSnapshot;
+}
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -54,7 +67,7 @@ export async function POST(
   }
 
   // Get intake form and its published version
-  const { rows } = await query<any>(
+  const { rows } = await query<UploadTokenFormRow>(
     `SELECT f.id, f.opens_at, f.closes_at, f.status as form_status,
             v.snapshot_json
      FROM intake_forms f
@@ -79,7 +92,7 @@ export async function POST(
 
   // Field verification
   const snapshot = form.snapshot_json;
-  const field = snapshot.fields.find((f: any) => f.field_key === fieldKey);
+  const field = snapshot.fields.find((f) => f.field_key === fieldKey);
   if (!field || field.field_type !== "file") {
     return NextResponse.json({ error: "Invalid file field" }, { status: 400 });
   }
@@ -88,8 +101,13 @@ export async function POST(
   if (contentType !== "application/pdf") {
     return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
   }
-  if (sizeBytes > MAX_INTAKE_FILE_SIZE_BYTES) {
-    return NextResponse.json({ error: "File size exceeds 100MB limit" }, { status: 400 });
+  const maxBytes = maxFileSizeBytesForIntakeField(field as PublishedIntakeField);
+  if (sizeBytes > maxBytes) {
+    const status = maxBytes <= 30 * 1024 * 1024 ? 413 : 400;
+    return NextResponse.json(
+      { error: status === 413 ? "File size exceeds 30 MB limit for mirrored uploads" : "File size exceeds limit" },
+      { status }
+    );
   }
 
   // Generate token
@@ -100,7 +118,7 @@ export async function POST(
     const token = await generateClientTokenFromReadWriteToken({
       token: process.env.BLOB_READ_WRITE_TOKEN,
       pathname,
-      maximumSizeInBytes: MAX_INTAKE_FILE_SIZE_BYTES,
+      maximumSizeInBytes: maxBytes,
       allowedContentTypes: ["application/pdf"],
       validUntil: Date.now() + 5 * 60 * 1000,
       addRandomSuffix: false,

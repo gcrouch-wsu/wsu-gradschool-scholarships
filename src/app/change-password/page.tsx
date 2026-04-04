@@ -83,12 +83,15 @@ export default function ChangePasswordPage() {
             />
           </div>
           {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+            <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </div>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-[var(--wsu-crimson)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--wsu-crimson-hover)] disabled:opacity-50"
+            aria-busy={loading}
+            className="w-full rounded-md bg-[var(--wsu-crimson)] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[var(--wsu-crimson-hover)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Updating…" : "Update password"}
           </button>

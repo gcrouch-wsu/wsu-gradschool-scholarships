@@ -8,7 +8,7 @@ export default async function SubmitPage({
   const { cycleId } = await params;
 
   return (
-    <main className="min-h-screen bg-zinc-50">
+    <main id="main-content" className="min-h-screen bg-zinc-50">
       <IntakeForm cycleId={cycleId} />
     </main>
   );

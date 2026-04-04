@@ -35,6 +35,7 @@ interface SanitizedFieldInput {
   target_column_title?: string | null;
   target_column_type?: string | null;
   settings_json: Record<string, unknown>;
+  push_to_smartsheet?: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -58,7 +59,9 @@ function normalizeFieldSettings(field: {
     }
     return {
       ok: true as const,
-      settings: settings.multiple === true ? { multiple: true } : {},
+      settings: {
+        ...(settings.multiple === true ? { multiple: true } : {}),
+      },
     };
   }
 
@@ -187,6 +190,7 @@ export async function PUT(
     sanitizedFields.push({
       ...f,
       settings_json: normalizedSettings.settings,
+      push_to_smartsheet: f.field_type === "file" ? Boolean(f.push_to_smartsheet) : false,
     });
     keys.add(f.field_key);
   }
@@ -216,12 +220,13 @@ export async function PUT(
         `INSERT INTO intake_form_fields (
           intake_form_id, field_key, label, help_text, field_type, 
           required, sort_order, target_column_id, target_column_title, 
-          target_column_type, settings_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          target_column_type, settings_json, push_to_smartsheet
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           form.id, f.field_key, f.label, f.help_text, f.field_type,
           f.required || false, idx, f.target_column_id, f.target_column_title,
-          f.target_column_type, JSON.stringify(f.settings_json || {})
+          f.target_column_type, JSON.stringify(f.settings_json || {}),
+          f.push_to_smartsheet ?? false,
         ]
       );
     }

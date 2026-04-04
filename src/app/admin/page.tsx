@@ -11,7 +11,7 @@ export default async function AdminDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           href="/admin/scholarships"
-          className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm transition hover:border-zinc-300"
+          className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm ring-offset-2 transition hover:border-[var(--wsu-crimson)]/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wsu-crimson)]"
         >
           <h2 className="font-medium text-zinc-900">Scholarships</h2>
           <p className="mt-1 text-sm text-zinc-600">
@@ -32,7 +32,7 @@ export default async function AdminDashboardPage() {
         {isPlatformAdmin && (
           <Link
             href="/admin/connections"
-            className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm transition hover:border-zinc-300"
+            className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm ring-offset-2 transition hover:border-[var(--wsu-crimson)]/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--wsu-crimson)]"
           >
             <h2 className="font-medium text-zinc-900">Connections</h2>
             <p className="mt-1 text-sm text-zinc-600">
