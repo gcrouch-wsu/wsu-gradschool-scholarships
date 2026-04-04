@@ -234,7 +234,7 @@ export default function IntakeFormBuilder({
         // First ensure form exists
         const initRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`, { method: "POST" });
         if (!initRes.ok) {
-           const errData = await readResponseJson<{ error?: string }>(initRes).catch(() => ({}));
+           const errData = await readResponseJson<{ error?: string }>(initRes).catch(() => ({ error: undefined }));
            throw new Error(errData.error || "Failed to initialize intake form");
         }
 
