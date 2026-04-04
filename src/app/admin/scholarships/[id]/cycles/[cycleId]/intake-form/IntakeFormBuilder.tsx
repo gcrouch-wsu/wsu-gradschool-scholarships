@@ -86,6 +86,22 @@ const CUSTOM_ADDABLE_FIELD_TYPES = FIELD_TYPES.filter((type) => type.value === "
 const ALLOWED_SMARTSHEET_TYPES = ["TEXT_NUMBER", "PICKLIST", "DATE", "CHECKBOX"];
 const INTAKE_LAYOUT_SECTIONS = [{ section_key: "main", label: "Main", sort_order: 0 }];
 
+async function readResponseJson<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(
+      `Empty response from server (HTTP ${res.status}). Check deployment logs, database connectivity, and that migrations through 010 are applied.`
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      `Invalid response from server (HTTP ${res.status}): ${text.slice(0, 160)}${text.length > 160 ? "…" : ""}`
+    );
+  }
+}
+
 function slugifyFieldKey(value: string): string {
   return value
     .trim()
@@ -203,7 +219,7 @@ export default function IntakeFormBuilder({
     setLoadingSubmissions(true);
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions`);
-      const data = await res.json();
+      const data = await readResponseJson<{ submissions: IntakeSubmissionSummary[] }>(res);
       setSubmissions(data.submissions || []);
     } catch {
       console.error("Failed to load submissions");
@@ -217,15 +233,21 @@ export default function IntakeFormBuilder({
       try {
         // First ensure form exists
         const initRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`, { method: "POST" });
-        if (!initRes.ok) throw new Error("Failed to initialize intake form");
+        if (!initRes.ok) {
+           const errData = await readResponseJson<{ error?: string }>(initRes).catch(() => ({}));
+           throw new Error(errData.error || "Failed to initialize intake form");
+        }
 
         const [dataRes, cycleRes] = await Promise.all([
           fetch(`/api/admin/cycles/${cycleId}/intake-form`),
           fetch(`/api/admin/cycles/${cycleId}/builder`) // Reusing builder API for columns
         ]);
 
-        const data = await dataRes.json();
-        const cycleData = await cycleRes.json();
+        const data = await readResponseJson<{ form: IntakeForm; fields: IntakeField[]; error?: string }>(dataRes);
+        const cycleData = await readResponseJson<{ columns: Column[]; error?: string }>(cycleRes);
+
+        if (!dataRes.ok) throw new Error(data.error || "Failed to load intake data");
+        if (!cycleRes.ok) throw new Error(cycleData.error || "Failed to load cycle data");
 
         setForm(data.form);
         setFields(data.fields || []);
@@ -314,7 +336,10 @@ export default function IntakeFormBuilder({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
       });
-      if (!formRes.ok) throw new Error("Failed to save form settings");
+      const formJson = await readResponseJson<{ error?: string }>(formRes);
+      if (!formRes.ok) {
+        throw new Error(formJson.error || "Failed to save form settings");
+      }
 
       // Save fields
       const fieldsRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form/fields`, {
@@ -325,9 +350,9 @@ export default function IntakeFormBuilder({
           layoutJson: normalizeDraftLayout(layoutDraft, INTAKE_LAYOUT_SECTIONS),
         })
       });
+      const fieldsJson = await readResponseJson<{ error?: string }>(fieldsRes);
       if (!fieldsRes.ok) {
-        const d = await fieldsRes.json();
-        throw new Error(d.error || "Failed to save fields");
+        throw new Error(fieldsJson.error || "Failed to save fields");
       }
 
       setSuccess("Configuration saved successfully");
@@ -354,14 +379,20 @@ export default function IntakeFormBuilder({
       }
       
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/publish`, { method: "POST" });
+      const publishJson = await readResponseJson<{ error?: string }>(res);
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || "Failed to publish");
+        throw new Error(publishJson.error || "Failed to publish");
       }
       setSuccess("Form published successfully");
       // Reload to get new status
       const dataRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`);
-      const data = await dataRes.json();
+      const data = await readResponseJson<{ form: IntakeForm | null; error?: string }>(dataRes);
+      if (!dataRes.ok) {
+        throw new Error(data.error || "Failed to reload form after publish");
+      }
+      if (!data.form) {
+        throw new Error("Reload after publish returned no form");
+      }
       setForm(data.form);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Publish failed");
@@ -376,10 +407,19 @@ export default function IntakeFormBuilder({
     setSuccess("");
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/unpublish`, { method: "POST" });
-      if (!res.ok) throw new Error("Failed to unpublish");
+      const unpublishJson = await readResponseJson<{ error?: string }>(res);
+      if (!res.ok) {
+        throw new Error(unpublishJson.error || "Failed to unpublish");
+      }
       setSuccess("Form unpublished");
       const dataRes = await fetch(`/api/admin/cycles/${cycleId}/intake-form`);
-      const data = await dataRes.json();
+      const data = await readResponseJson<{ form: IntakeForm | null; error?: string }>(dataRes);
+      if (!dataRes.ok) {
+        throw new Error(data.error || "Failed to reload form after unpublish");
+      }
+      if (!data.form) {
+        throw new Error("Reload after unpublish returned no form");
+      }
       setForm(data.form);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unpublish failed");
@@ -390,8 +430,8 @@ export default function IntakeFormBuilder({
     if (!confirm("Retry processing this submission?")) return;
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}/retry`, { method: "POST" });
+      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
       if (!res.ok) {
-        const d = await res.json();
         throw new Error(d.error || "Retry failed");
       }
       setSuccess("Retry initiated successfully");
@@ -405,7 +445,10 @@ export default function IntakeFormBuilder({
     if (!confirm("Are you sure you want to delete this submission record? This will not affect Smartsheet.")) return;
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) {
+        const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
+        throw new Error(d.error || "Delete failed");
+      }
       setSuccess("Submission record deleted");
       loadSubmissions();
     } catch (err: unknown) {
@@ -424,7 +467,7 @@ export default function IntakeFormBuilder({
     setSuccess("");
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
+      const data = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || "Failed to delete intake form");
       }
@@ -438,8 +481,8 @@ export default function IntakeFormBuilder({
   const handleResolve = async (submissionId: string) => {
     try {
       const res = await fetch(`/api/admin/cycles/${cycleId}/intake-form/submissions/${submissionId}/resolve`, { method: "POST" });
+      const d = await readResponseJson<{ error?: string }>(res).catch(() => ({}));
       if (!res.ok) {
-        const d = await res.json();
         throw new Error(d.error || "Resolve failed");
       }
       setSuccess("Submission marked resolved");

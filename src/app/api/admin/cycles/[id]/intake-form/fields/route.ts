@@ -21,6 +21,7 @@ import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
+import { jsonErrorFromUnknown } from "@/lib/api-route-error";
 
 export const runtime = "nodejs";
 
@@ -119,138 +120,147 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: cycleId } = await params;
-  if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const intakeSchema = await getIntakeSchemaStatus();
-  if (!intakeSchema.available) {
-    return NextResponse.json(
-      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
-      { status: 503 }
+    const { id: cycleId } = await params;
+    if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const intakeSchema = await getIntakeSchemaStatus();
+    if (!intakeSchema.available) {
+      return NextResponse.json(
+        { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+        { status: 503 }
+      );
+    }
+
+    const { rows: forms } = await query<{ id: string }>(
+      "SELECT id FROM intake_forms WHERE cycle_id = $1",
+      [cycleId]
     );
-  }
+    const form = forms[0];
+    if (!form) return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
 
-  const { rows: forms } = await query<{ id: string }>(
-    "SELECT id FROM intake_forms WHERE cycle_id = $1",
-    [cycleId]
-  );
-  const form = forms[0];
-  if (!form) return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
+    let body: { fields?: unknown; layoutJson?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const { fields, layoutJson } = body;
 
-  const body = await request.json();
-  const { fields, layoutJson } = body;
+    if (!Array.isArray(fields)) {
+      return NextResponse.json({ error: "fields must be an array" }, { status: 400 });
+    }
 
-  if (!Array.isArray(fields)) {
-    return NextResponse.json({ error: "fields must be an array" }, { status: 400 });
-  }
-
-  // Validate fields against the locked v1 builder rules.
-  const keys = new Set<string>();
-  const mappedColumns = new Set<string>();
-  const sanitizedFields: SanitizedFieldInput[] = [];
-  for (const f of fields) {
-    if (!f.field_key || !f.label || !f.field_type) {
-      return NextResponse.json({ error: "field_key, label, and field_type are required" }, { status: 400 });
-    }
-    if (keys.has(f.field_key)) {
-      return NextResponse.json({ error: `Duplicate field key: ${f.field_key}` }, { status: 400 });
-    }
-    if (!(INTAKE_ALLOWED_FIELD_TYPES as readonly string[]).includes(f.field_type)) {
-      return NextResponse.json({ error: `Unsupported field type: ${f.field_type}` }, { status: 400 });
-    }
-    if (typeof f.label !== "string" || f.label.trim() === "") {
-      return NextResponse.json({ error: `Field "${f.field_key}" is missing a label` }, { status: 400 });
-    }
-    if (f.field_type === "file") {
-      if (f.target_column_id || f.target_column_title || f.target_column_type) {
-        return NextResponse.json({ error: `File field "${f.label}" cannot map directly to a Smartsheet column` }, { status: 400 });
+    // Validate fields against the locked v1 builder rules.
+    const keys = new Set<string>();
+    const mappedColumns = new Set<string>();
+    const sanitizedFields: SanitizedFieldInput[] = [];
+    for (const f of fields) {
+      if (!f.field_key || !f.label || !f.field_type) {
+        return NextResponse.json({ error: "field_key, label, and field_type are required" }, { status: 400 });
       }
-    } else {
-      if (!f.target_column_id || !f.target_column_title || !f.target_column_type) {
-        return NextResponse.json({ error: `Field "${f.label}" is missing a target column mapping` }, { status: 400 });
+      if (keys.has(f.field_key)) {
+        return NextResponse.json({ error: `Duplicate field key: ${f.field_key}` }, { status: 400 });
       }
-      if (!(INTAKE_ALLOWED_COLUMN_TYPES as readonly string[]).includes(f.target_column_type)) {
-        return NextResponse.json({ error: `Field "${f.label}" maps to unsupported column type ${f.target_column_type}` }, { status: 400 });
+      if (!(INTAKE_ALLOWED_FIELD_TYPES as readonly string[]).includes(f.field_type)) {
+        return NextResponse.json({ error: `Unsupported field type: ${f.field_type}` }, { status: 400 });
       }
-      const mappedColumnKey = String(f.target_column_id);
-      if (mappedColumns.has(mappedColumnKey)) {
-        return NextResponse.json({ error: `Mapped column "${f.target_column_title}" is already used by another field` }, { status: 400 });
+      if (typeof f.label !== "string" || f.label.trim() === "") {
+        return NextResponse.json({ error: `Field "${f.field_key}" is missing a label` }, { status: 400 });
       }
-      mappedColumns.add(mappedColumnKey);
-    }
-    const normalizedSettings = normalizeFieldSettings(f);
-    if (!normalizedSettings.ok) {
-      return NextResponse.json({ error: normalizedSettings.error }, { status: 400 });
+      if (f.field_type === "file") {
+        if (f.target_column_id || f.target_column_title || f.target_column_type) {
+          return NextResponse.json({ error: `File field "${f.label}" cannot map directly to a Smartsheet column` }, { status: 400 });
+        }
+      } else {
+        if (!f.target_column_id || !f.target_column_title || !f.target_column_type) {
+          return NextResponse.json({ error: `Field "${f.label}" is missing a target column mapping` }, { status: 400 });
+        }
+        if (!(INTAKE_ALLOWED_COLUMN_TYPES as readonly string[]).includes(f.target_column_type)) {
+          return NextResponse.json({ error: `Field "${f.label}" maps to unsupported column type ${f.target_column_type}` }, { status: 400 });
+        }
+        const mappedColumnKey = String(f.target_column_id);
+        if (mappedColumns.has(mappedColumnKey)) {
+          return NextResponse.json({ error: `Mapped column "${f.target_column_title}" is already used by another field` }, { status: 400 });
+        }
+        mappedColumns.add(mappedColumnKey);
+      }
+      const normalizedSettings = normalizeFieldSettings(f);
+      if (!normalizedSettings.ok) {
+        return NextResponse.json({ error: normalizedSettings.error }, { status: 400 });
+      }
+
+      sanitizedFields.push({
+        ...f,
+        settings_json: normalizedSettings.settings,
+        push_to_smartsheet: f.field_type === "file" ? Boolean(f.push_to_smartsheet) : false,
+      });
+      keys.add(f.field_key);
     }
 
-    sanitizedFields.push({
-      ...f,
-      settings_json: normalizedSettings.settings,
-      push_to_smartsheet: f.field_type === "file" ? Boolean(f.push_to_smartsheet) : false,
-    });
-    keys.add(f.field_key);
-  }
-
-  const layoutResult = validateLayoutJson(
-    layoutJson ?? buildIntakeLayoutFromFields(sanitizedFields),
-    {
-      knownFieldKeys: sanitizedFields.map((field: { field_key: string }) => field.field_key),
-      requireAllPlaced: false,
-      allowedSectionKeys: ["main"],
-    }
-  );
-  if (!layoutResult.ok) {
-    return NextResponse.json(
-      { error: `Generated intake layout is invalid: ${layoutResult.error}` },
-      { status: 400 }
+    const layoutResult = validateLayoutJson(
+      layoutJson ?? buildIntakeLayoutFromFields(sanitizedFields),
+      {
+        knownFieldKeys: sanitizedFields.map((field: { field_key: string }) => field.field_key),
+        requireAllPlaced: false,
+        allowedSectionKeys: ["main"],
+      }
     );
-  }
+    if (!layoutResult.ok) {
+      return NextResponse.json(
+        { error: `Generated intake layout is invalid: ${layoutResult.error}` },
+        { status: 400 }
+      );
+    }
 
-  await withTransaction(async (tx) => {
-    // Clear existing
-    await tx("DELETE FROM intake_form_fields WHERE intake_form_id = $1", [form.id]);
+    await withTransaction(async (tx) => {
+      // Clear existing
+      await tx("DELETE FROM intake_form_fields WHERE intake_form_id = $1", [form.id]);
 
-    // Insert new
-    for (const [idx, f] of sanitizedFields.entries()) {
-      await tx(
-        `INSERT INTO intake_form_fields (
+      // Insert new
+      for (const [idx, f] of sanitizedFields.entries()) {
+        await tx(
+          `INSERT INTO intake_form_fields (
           intake_form_id, field_key, label, help_text, field_type, 
           required, sort_order, target_column_id, target_column_title, 
           target_column_type, settings_json, push_to_smartsheet
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [
-          form.id, f.field_key, f.label, f.help_text, f.field_type,
-          f.required || false, idx, f.target_column_id, f.target_column_title,
-          f.target_column_type, JSON.stringify(f.settings_json || {}),
-          f.push_to_smartsheet ?? false,
-        ]
+          [
+            form.id, f.field_key, f.label, f.help_text, f.field_type,
+            f.required || false, idx, f.target_column_id, f.target_column_title,
+            f.target_column_type, JSON.stringify(f.settings_json || {}),
+            f.push_to_smartsheet ?? false,
+          ]
+        );
+      }
+
+      await tx(
+        "UPDATE intake_forms SET layout_json = $2, updated_at = now() WHERE id = $1",
+        [form.id, JSON.stringify(layoutResult.normalized)]
       );
-    }
 
-    await tx(
-      "UPDATE intake_forms SET layout_json = $2, updated_at = now() WHERE id = $1",
-      [form.id, JSON.stringify(layoutResult.normalized)]
-    );
-    
-    // Reset status to draft if it was invalid
-    await tx(
-      "UPDATE intake_forms SET status = 'draft', updated_at = now() WHERE id = $1 AND status = 'invalid'",
-      [form.id]
-    );
-  });
+      // Reset status to draft if it was invalid
+      await tx(
+        "UPDATE intake_forms SET status = 'draft', updated_at = now() WHERE id = $1 AND status = 'invalid'",
+        [form.id]
+      );
+    });
 
-  await logAudit({
-    actorUserId: user.id,
-    cycleId,
-    actionType: "intake.fields_updated",
-    targetType: "intake_form",
-    targetId: form.id,
-    metadata: { field_count: sanitizedFields.length }
-  });
+    await logAudit({
+      actorUserId: user.id,
+      cycleId,
+      actionType: "intake.fields_updated",
+      targetType: "intake_form",
+      targetId: form.id,
+      metadata: { field_count: sanitizedFields.length },
+    });
 
-  return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return jsonErrorFromUnknown(err, "PUT /api/admin/cycles/[id]/intake-form/fields");
+  }
 }

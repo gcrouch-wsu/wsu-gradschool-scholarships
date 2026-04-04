@@ -21,6 +21,7 @@ import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
+import { jsonErrorFromUnknown } from "@/lib/api-route-error";
 
 export const runtime = "nodejs";
 
@@ -72,22 +73,23 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: cycleId } = await params;
-  if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const intakeSchema = await getIntakeSchemaStatus();
-  if (!intakeSchema.available) {
-    return NextResponse.json(
-      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
-      { status: 503 }
-    );
-  }
+    const { id: cycleId } = await params;
+    if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const intakeSchema = await getIntakeSchemaStatus();
+    if (!intakeSchema.available) {
+      return NextResponse.json(
+        { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+        { status: 503 }
+      );
+    }
 
-  const { rows: forms } = await query<IntakeFormRecord>(
+    const { rows: forms } = await query<IntakeFormRecord>(
     "SELECT id, title, instructions_text, opens_at, closes_at, layout_json FROM intake_forms WHERE cycle_id = $1",
     [cycleId]
   );
@@ -229,14 +231,17 @@ export async function POST(
     );
   });
 
-  await logAudit({
-    actorUserId: user.id,
-    cycleId,
-    actionType: "intake.form_published",
-    targetType: "intake_form",
-    targetId: form.id,
-    metadata: { version: nextVer }
-  });
+    await logAudit({
+      actorUserId: user.id,
+      cycleId,
+      actionType: "intake.form_published",
+      targetType: "intake_form",
+      targetId: form.id,
+      metadata: { version: nextVer },
+    });
 
-  return NextResponse.json({ success: true, version: nextVer });
+    return NextResponse.json({ success: true, version: nextVer });
+  } catch (err) {
+    return jsonErrorFromUnknown(err, "POST /api/admin/cycles/[id]/intake-form/publish");
+  }
 }

@@ -13,6 +13,7 @@ import {
   formatIntakeSchemaUnavailableMessage,
   getIntakeSchemaStatus,
 } from "@/lib/intake-schema";
+import { jsonErrorFromUnknown } from "@/lib/api-route-error";
 
 export const runtime = "nodejs";
 
@@ -158,27 +159,41 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: cycleId } = await params;
-  if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const intakeSchema = await getIntakeSchemaStatus();
-  if (!intakeSchema.available) {
-    return NextResponse.json(
-      { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
-      { status: 503 }
-    );
-  }
+    const { id: cycleId } = await params;
+    if (!await canManageCycle(user.id, user.is_platform_admin, cycleId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const intakeSchema = await getIntakeSchemaStatus();
+    if (!intakeSchema.available) {
+      return NextResponse.json(
+        { error: formatIntakeSchemaUnavailableMessage(intakeSchema.missingTables) },
+        { status: 503 }
+      );
+    }
 
-  const body = await request.json();
-  const { title, instructions_text, opens_at, closes_at, status } = body;
-  const sanitizedInstructions = sanitizeRichTextHtml(instructions_text);
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Expected a JSON object" }, { status: 400 });
+    }
 
-  const { rows: updated } = await query<{ id: string }>(
-    `UPDATE intake_forms 
+    const title = body.title as string | undefined;
+    const instructions_text = body.instructions_text as string | null | undefined;
+    const opens_at = body.opens_at as string | null | undefined;
+    const closes_at = body.closes_at as string | null | undefined;
+    const status = body.status as string | undefined;
+    const sanitizedInstructions = sanitizeRichTextHtml(instructions_text);
+
+    const { rows: updated } = await query<{ id: string }>(
+      `UPDATE intake_forms 
      SET title = COALESCE($1, title),
          instructions_text = COALESCE($2, instructions_text),
          opens_at = $3,
@@ -187,23 +202,26 @@ export async function PATCH(
          updated_at = now()
      WHERE cycle_id = $6
      RETURNING id`,
-    [title, sanitizedInstructions, opens_at, closes_at, status, cycleId]
-  );
+      [title, sanitizedInstructions, opens_at, closes_at, status, cycleId]
+    );
 
-  if (updated.length === 0) {
-    return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
+    if (updated.length === 0) {
+      return NextResponse.json({ error: "Intake form not found" }, { status: 404 });
+    }
+
+    await logAudit({
+      actorUserId: user.id,
+      cycleId,
+      actionType: "intake.form_updated",
+      targetType: "intake_form",
+      targetId: updated[0].id,
+      metadata: { fields_updated: Object.keys(body) },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return jsonErrorFromUnknown(err, "PATCH /api/admin/cycles/[id]/intake-form");
   }
-
-  await logAudit({
-    actorUserId: user.id,
-    cycleId,
-    actionType: "intake.form_updated",
-    targetType: "intake_form",
-    targetId: updated[0].id,
-    metadata: { fields_updated: Object.keys(body) }
-  });
-
-  return NextResponse.json({ success: true });
 }
 
 export async function DELETE(
