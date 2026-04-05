@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import FormData from "form-data";
-import type { Readable as NodeReadable } from "node:stream";
+import { PassThrough, Readable, type Readable as NodeReadable } from "node:stream";
 
 /**
  * Smartsheet API proxy - server-side only.
@@ -299,6 +299,71 @@ export interface AttachFileError {
   errorCode?: number;
 }
 
+/**
+ * Content-Disposition for Smartsheet "simple" upload (raw body, not multipart).
+ * @see https://developers.smartsheet.com/api/smartsheet/openapi/attachments — Simple uploads
+ */
+function smartsheetSimpleUploadContentDisposition(filename: string): string {
+  const trimmed = filename.trim() || "file";
+  const asciiSafe = /^[\x20-\x7E]*$/.test(trimmed);
+  if (asciiSafe) {
+    const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `attachment; filename="${escaped}"`;
+  }
+  const fallback =
+    trimmed.replace(/[^\x20-\x7E]+/g, "_").replace(/["\\]/g, "_") || "file";
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(trimmed)}`;
+}
+
+/**
+ * Simple (non-multipart) file upload to a row — same endpoint as multipart, avoids boundary / chunked issues.
+ * Request body is the raw file bytes; Content-Length is implied by a fixed Uint8Array body.
+ */
+export async function attachFileToRowSimple(
+  token: string,
+  sheetId: number,
+  rowId: number,
+  filename: string,
+  contentType: string,
+  fileBytes: Uint8Array,
+  timeoutMs?: number
+): Promise<AttachFileResult | AttachFileError> {
+  const ms = timeoutMs ?? 120_000;
+  try {
+    const ct =
+      typeof contentType === "string" && contentType.trim() !== ""
+        ? contentType.trim()
+        : "application/octet-stream";
+
+    // Blob is well-typed as BodyInit; type sets the request Content-Type for this raw-body upload.
+    const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Disposition": smartsheetSimpleUploadContentDisposition(filename),
+      },
+      body: new Blob([Buffer.from(fileBytes)], { type: ct }),
+      signal: AbortSignal.timeout(ms),
+    });
+
+    const body = await res.text();
+    if (!res.ok) {
+      const parsed = parseSmartsheetError(body, res.status);
+      return {
+        ok: false,
+        error: parsed.message,
+        httpStatus: parsed.httpStatus,
+        errorCode: parsed.errorCode,
+      };
+    }
+
+    return parseAttachResponseBody(body, res.status);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
 function parseAttachResponseBody(body: string, httpStatus: number): AttachFileResult | AttachFileError {
   let attachmentId: number | undefined;
   try {
@@ -353,6 +418,18 @@ export async function getAttachmentDownloadMeta(
 }
 
 /**
+ * Content-Type from form-data must be sent verbatim (boundary matches the streamed/buffered body).
+ * Native fetch must not receive the form-data instance as `body` — undici mishandles it.
+ */
+function multipartContentTypeFromFormData(form: FormData): string {
+  const raw = form.getHeaders()["content-type"];
+  if (typeof raw !== "string" || !raw.includes("multipart/form-data")) {
+    throw new Error("form-data did not produce a multipart Content-Type header");
+  }
+  return raw;
+}
+
+/**
  * Upload a native FILE attachment to a Smartsheet row (multipart), streaming body.
  */
 export async function attachFileToRowFromReadable(
@@ -373,20 +450,30 @@ export async function attachFileToRowFromReadable(
       contentType,
     });
 
+    const contentTypeHeader = multipartContentTypeFromFormData(form);
+    // Pipe legacy form-data stream → PassThrough → Web ReadableStream so undici/fetch
+    // sends the exact multipart bytes (and does not replace Content-Type / boundary).
+    const pass = new PassThrough();
+    form.once("error", (err) => {
+      pass.destroy(err);
+    });
+    form.pipe(pass);
+    const body = Readable.toWeb(pass);
+
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        ...form.getHeaders(), // Critical: includes Content-Type with boundary
+        "Content-Type": contentTypeHeader,
       },
-      body: form as unknown as BodyInit,
+      body,
       duplex: "half",
       signal: AbortSignal.timeout(ms),
     } as RequestInit & { duplex: "half" });
 
-    const body = await res.text();
+    const bodyText = await res.text();
     if (!res.ok) {
-      const parsed = parseSmartsheetError(body, res.status);
+      const parsed = parseSmartsheetError(bodyText, res.status);
       return {
         ok: false,
         error: parsed.message,
@@ -395,7 +482,7 @@ export async function attachFileToRowFromReadable(
       };
     }
 
-    return parseAttachResponseBody(body, res.status);
+    return parseAttachResponseBody(bodyText, res.status);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
@@ -423,13 +510,17 @@ export async function attachFileToRow(
       contentType,
     });
 
+    const contentTypeHeader = multipartContentTypeFromFormData(form);
+    // Buffer satisfies fetch at runtime; narrow to Uint8Array for TS BodyInit
+    const payload = new Uint8Array(form.getBuffer());
+
     const res = await fetch(`${BASE_URL}/sheets/${sheetId}/rows/${rowId}/attachments`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        ...form.getHeaders(), // Critical: includes Content-Type with boundary
+        "Content-Type": contentTypeHeader,
       },
-      body: form as unknown as BodyInit,
+      body: payload,
       signal: AbortSignal.timeout(ms),
     });
 

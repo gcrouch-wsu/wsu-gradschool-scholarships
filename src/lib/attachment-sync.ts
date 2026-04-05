@@ -4,7 +4,7 @@ import { decrypt } from "@/lib/encryption";
 import { sanitizeSyncErrorForStorage } from "@/lib/sanitize-sync-error";
 import { MAX_SMARTSHEET_MIRROR_FILE_BYTES } from "@/lib/intake";
 import {
-  attachFileToRowFromReadable,
+  attachFileToRowSimple,
   getRowAttachments,
   smartsheetAttachmentMatchesSize,
 } from "@/lib/smartsheet";
@@ -291,23 +291,37 @@ export async function processAttachmentFile(fileId: string): Promise<{ ok: boole
     }
   }
 
-  if (!blobRes.body) {
-    await markFileRetryable(fileId, "Blob response had no body", row.sync_attempt_count);
-    return { ok: false, error: "blob body" };
+  let fileBytes: Uint8Array;
+  try {
+    fileBytes = new Uint8Array(await blobRes.arrayBuffer());
+  } catch {
+    await markFileRetryable(fileId, "Could not read blob body", row.sync_attempt_count);
+    return { ok: false, error: "blob read" };
   }
 
-  const nodeStream = webStreamToNodeReadableMaxBytes(
-    blobRes.body,
-    MAX_SMARTSHEET_MIRROR_FILE_BYTES
-  );
+  if (fileBytes.byteLength > MAX_SMARTSHEET_MIRROR_FILE_BYTES) {
+    await markFilePermanentFailed(fileId, "File too large for Smartsheet mirror (over 30 MB)");
+    return { ok: false, error: "size" };
+  }
 
-  const attach = await attachFileToRowFromReadable(
+  if (Number.isFinite(sizeBytes) && sizeBytes > 0 && fileBytes.byteLength !== sizeBytes) {
+    await markFileRetryable(
+      fileId,
+      `Blob size mismatch: expected ${sizeBytes} bytes, got ${fileBytes.byteLength}`,
+      row.sync_attempt_count
+    );
+    return { ok: false, error: "size mismatch" };
+  }
+
+  // Smartsheet documents multipart Content-Length; streaming multipart often goes chunked. Simple upload + fixed body
+  // matches their non-multipart flow and sends an explicit Content-Length (Node fetch sets it for Uint8Array bodies).
+  const attach = await attachFileToRowSimple(
     token,
     sheetId,
     rowId,
     row.original_filename,
     row.content_type || "application/pdf",
-    nodeStream
+    fileBytes
   );
 
   if (!attach.ok) {
