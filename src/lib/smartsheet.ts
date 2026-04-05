@@ -227,9 +227,71 @@ export interface SmartsheetAttachment {
   mimeType?: string;
   /** Smartsheet returns size in KB — used for dedup vs our size_bytes */
   sizeInKb?: number;
+  attachmentType?: string;
 }
 
 const ATTACHMENT_PAGE_SIZE = 100;
+const ATTACHMENT_URL_HYDRATE_CONCURRENCY = 4;
+
+function listAttachmentsChunk(json: unknown): Array<{
+  id: number;
+  name: string;
+  url?: string | null;
+  urlExpiresInMillis?: number;
+  mimeType?: string;
+  sizeInKb?: number;
+  attachmentType?: string;
+}> {
+  if (!json || typeof json !== "object") return [];
+  const o = json as { data?: unknown; result?: unknown };
+  const raw = Array.isArray(o.data) ? o.data : Array.isArray(o.result) ? o.result : [];
+  return raw.filter(
+    (x): x is NonNullable<(typeof raw)[number]> =>
+      typeof x === "object" && x !== null && typeof (x as { id?: unknown }).id === "number"
+  ) as Array<{
+    id: number;
+    name: string;
+    url?: string | null;
+    urlExpiresInMillis?: number;
+    mimeType?: string;
+    sizeInKb?: number;
+    attachmentType?: string;
+  }>;
+}
+
+/**
+ * List responses sometimes omit ephemeral file URLs; GET attachment restores them for reviewer links.
+ */
+async function hydrateSmartsheetAttachmentUrls(
+  token: string,
+  sheetId: number,
+  attachments: SmartsheetAttachment[]
+): Promise<SmartsheetAttachment[]> {
+  const needsHydration = attachments.filter((a) => {
+    const u = a.url;
+    return typeof u !== "string" || u.trim() === "";
+  });
+  if (needsHydration.length === 0) return attachments;
+
+  const urlById = new Map<number, string>();
+
+  for (let i = 0; i < needsHydration.length; i += ATTACHMENT_URL_HYDRATE_CONCURRENCY) {
+    const slice = needsHydration.slice(i, i + ATTACHMENT_URL_HYDRATE_CONCURRENCY);
+    const settled = await Promise.all(
+      slice.map((a) => getAttachmentDownloadMeta(token, sheetId, a.id))
+    );
+    for (let j = 0; j < slice.length; j++) {
+      const meta = settled[j];
+      if (meta.ok) urlById.set(slice[j].id, meta.url);
+    }
+  }
+
+  return attachments.map((a) => {
+    const replacement = urlById.get(a.id);
+    if (!replacement) return a;
+    return { ...a, url: replacement };
+  });
+}
 
 /**
  * List all row attachments (handles API pagination).
@@ -255,32 +317,26 @@ export async function getRowAttachments(
         const body = await res.text();
         return { ok: false, error: body || `HTTP ${res.status}`, httpStatus: res.status };
       }
-      const data = (await res.json()) as {
-        data?: Array<{
-          id: number;
-          name: string;
-          url?: string;
-          urlExpiresInMillis?: number;
-          mimeType?: string;
-          sizeInKb?: number;
-        }>;
-      };
-      const chunk = data.data ?? [];
+      const json: unknown = await res.json();
+      const chunk = listAttachmentsChunk(json);
       for (const a of chunk) {
+        const url = typeof a.url === "string" && a.url.trim() !== "" ? a.url : undefined;
         all.push({
           id: a.id,
           name: a.name,
-          url: a.url,
+          url,
           urlExpiresInMillis: a.urlExpiresInMillis,
           mimeType: a.mimeType,
           sizeInKb: a.sizeInKb,
+          attachmentType: a.attachmentType,
         });
       }
       if (chunk.length === 0 || chunk.length < ATTACHMENT_PAGE_SIZE) break;
       page += 1;
     }
 
-    return { ok: true, attachments: all };
+    const hydrated = await hydrateSmartsheetAttachmentUrls(token, sheetId, all);
+    return { ok: true, attachments: hydrated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: msg };
@@ -399,14 +455,20 @@ export async function getAttachmentDownloadMeta(
     if (!res.ok) {
       return { ok: false, error: body || `HTTP ${res.status}`, httpStatus: res.status };
     }
-    let data: { url?: string; name?: string; result?: { url?: string; name?: string } };
+    let data: {
+      url?: string;
+      name?: string;
+      result?: { url?: string; name?: string };
+      d?: { result?: { url?: string; name?: string } };
+    };
     try {
       data = JSON.parse(body) as typeof data;
     } catch {
       return { ok: false, error: "Invalid Smartsheet attachment JSON", httpStatus: res.status };
     }
-    const url = data.result?.url ?? data.url;
-    const name = data.result?.name ?? data.name;
+    const nested = data.result ?? data.d?.result;
+    const url = nested?.url ?? data.url;
+    const name = nested?.name ?? data.name;
     if (typeof url !== "string" || !url) {
       return { ok: false, error: "Attachment response missing url", httpStatus: res.status };
     }

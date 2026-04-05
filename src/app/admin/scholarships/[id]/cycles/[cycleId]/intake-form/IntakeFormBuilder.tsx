@@ -844,8 +844,9 @@ export default function IntakeFormBuilder({
                 {field.field_type === "file" && (
                   <div className="sm:col-span-2 rounded border border-dashed border-zinc-300 bg-white px-3 py-3">
                     <p className="text-xs text-zinc-600">
-                      File uploads stay in secure app storage and appear in reviewer attachments. They are not mapped
-                      directly to a Smartsheet column.
+                      Files are stored in secure app storage and appear in reviewer attachments. They are not mapped to
+                      a Smartsheet column. If you enable push below, each upload is also copied as a native row attachment
+                      on the nominee’s Smartsheet row (in addition to staying in the app).
                     </p>
                     <div className="mt-3 flex flex-wrap gap-4">
                       <label className="flex items-center gap-2 text-sm">

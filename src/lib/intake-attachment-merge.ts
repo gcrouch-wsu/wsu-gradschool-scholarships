@@ -6,6 +6,8 @@ export type MergedAttachmentSource =
   | "intake_upload_pending"
   | "intake_upload_failed"
   | "intake_upload_blob_only"
+  /** Intake file still in app storage; mirrored to Smartsheet — reviewers open via signed app URL */
+  | "intake_upload_synced"
   | "reviewer_upload";
 
 export interface IntakeFileForMerge {
@@ -59,13 +61,25 @@ export function mergeIntakeWithSmartsheetAttachments(
         Number.isFinite(sid) && smartsheetAttachments.find((a) => a.id === sid);
       if (match) {
         consumedSmartsheetIds.add(match.id);
-        merged.push({
-          id: String(match.id),
-          name: match.name,
-          url: match.url,
-          source: "smartsheet",
-          mimeType: match.mimeType || "application/pdf",
-        });
+        // Reviewers download intake uploads from the app (DB metadata + private storage), not Smartsheet.
+        // After cleanup removes the blob but Smartsheet still has a copy, only then use Smartsheet URL.
+        if (st === "deleted_from_blob") {
+          merged.push({
+            id: String(match.id),
+            name: match.name,
+            url: match.url,
+            source: "smartsheet",
+            mimeType: match.mimeType || "application/pdf",
+          });
+        } else {
+          merged.push({
+            id: file.id,
+            name: match.name ?? file.original_filename,
+            url: createSignedIntakeFileUrl(file.id),
+            source: "intake_upload_synced",
+            mimeType: match.mimeType || "application/pdf",
+          });
+        }
         continue;
       }
       merged.push({
