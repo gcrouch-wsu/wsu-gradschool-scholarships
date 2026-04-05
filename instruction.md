@@ -21,9 +21,9 @@ There are two admin levels:
 
 The app uses:
 
-- **Smartsheet** for structured row data
-- **Postgres** for app state
-- **Vercel Blob** for private file uploads
+- **Smartsheet** for structured row data (and optional mirrored intake PDFs as row `FILE` attachments when enabled)
+- **Postgres** for app state and file metadata (commonly on Supabase; this is not Supabase Storage for binaries)
+- **Vercel Blob** for private uploaded file bytes (intake PDFs, reviewer uploads)
 
 Reviewer entry URL:
 
@@ -175,6 +175,8 @@ This script:
 
 At this point, the app is installed.
 
+Scheduled jobs in `vercel.json` (blob cleanup and Smartsheet attachment sync) require a Vercel plan that supports **Cron Jobs** and a matching `CRON_SECRET`. If mirroring never completes, check the deployment’s Cron settings and that the job receives the expected `Authorization` header.
+
 ---
 
 ## Part 2: Platform admin guide
@@ -312,22 +314,28 @@ The nomination intake form is the public-facing form used to create or update Sm
 Key behaviors:
 
 - it writes structured field data into Smartsheet
-- uploads go to private Blob, not directly into Smartsheet
+- PDF uploads are stored in **private Vercel Blob** first, with metadata in Postgres; by default they are **not** written to Smartsheet cells
+- optional **Push uploaded files to Smartsheet** (per file field): mirrors each PDF as a native **row attachment** after submit, subject to Smartsheet’s **30 MB** limit for that field (100 MB cap remains for non-push file fields)
+- mirroring runs **asynchronously** via the scheduled job `GET /api/admin/jobs/sync-smartsheet-attachments` (Vercel cron, protected with `CRON_SECRET`); submission success does not wait for mirror completion
 - PDFs can be uploaded as single-file or multi-file fields
 - mapped Smartsheet text columns can use short or long narrative input style
 - the form can be drafted, published, unpublished, or deleted
 - delete is guarded once submission history exists
+
+Reviewer **attachment links** for intake uploads open through the **app** (time-limited signed URLs to `/api/intake-files/...`) so long as the blob row still exists; after staged blob cleanup post-sync, reviewers may fall back to Smartsheet download URLs when applicable.
 
 ### Typical intake form flow
 
 1. Open the cycle page.
 2. Click **Build intake form**.
 3. Add questions from synced Smartsheet columns for structured data.
-4. Add file-upload questions for PDFs as needed.
+4. Add file-upload questions for PDFs as needed. Enable **Push uploaded files to Smartsheet** only when nominees’ PDFs should also appear as row attachments in Smartsheet.
 5. Arrange layout in rows. Drag row cards to reorder them; Up/Down remains available as a fallback.
 6. Click **Save Draft**.
 7. Click **Publish Form**.
 8. Use **View live form** from the cycle page to verify it.
+
+Apply migration **`010_smartsheet_attachment_sync.sql`** on any database that should use push-to-Smartsheet; without it, saving intake fields that use the toggle will fail at the database layer.
 
 ---
 
@@ -393,6 +401,9 @@ Do not assume Vercel deploys run SQL migrations for you.
 | Reviewer or intake columns look wrong after Smartsheet changes | Click **Sync columns from Smartsheet** again, then republish if you need the live published forms to pick up refreshed draft metadata |
 | Login works locally but not in production | Recheck `DATABASE_URL`, `ENCRYPTION_KEY`, and whether the production DB was seeded |
 | A code deploy succeeds but a feature still fails with missing-table errors | The code is deployed but the matching SQL migration was not applied |
+| Intake save/publish errors mentioning a missing column such as `push_to_smartsheet` | Apply `010_smartsheet_attachment_sync.sql` to the database |
+| Push-enabled files never appear on Smartsheet rows | Confirm Vercel **Cron Jobs** are enabled, `CRON_SECRET` matches what the job sends, and deployment includes `vercel.json` schedules for `sync-smartsheet-attachments` |
+| Reviewer sees attachment names but links do not open | Deploy current code paths for merged attachments and signed intake URLs; confirm `BLOB_READ_WRITE_TOKEN` and `NEXT_PUBLIC_APP_URL` are set |
 
 ---
 
@@ -406,7 +417,7 @@ Before handing the app to real users, confirm all of these:
 - `NEXT_PUBLIC_APP_URL` is set
 - `BLOB_READ_WRITE_TOKEN` is set
 - `CRON_SECRET` is set
-- the latest SQL migrations are applied
+- the latest SQL migrations are applied (including `010` if using push-to-Smartsheet)
 - you can log in as a platform admin
 - you can create a program
 - you can create a cycle

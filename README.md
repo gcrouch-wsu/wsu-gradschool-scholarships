@@ -5,19 +5,19 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
 ## Current capabilities
 
 - Admin dashboard for programs, cycles, users, connections, templates, and assignments
-- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, optional text-question character limits, short-vs-narrative text input style for Smartsheet text columns, drag-reorder row layout, and direct write to Smartsheet rows
+- Public intake form builder with publish/unpublish, versioned snapshots, private Blob uploads, multi-file support, optional text-question character limits, short-vs-narrative text input style for Smartsheet text columns, drag-reorder row layout, direct write to Smartsheet rows, and optional per-field **push to Smartsheet** (native row `FILE` attachments, 30 MB cap, async cron sync)
 - Reviewer form builder with role-aware field behavior, field-level blind hiding, per-role view/edit permissions, optional helper text, drag-reorder row layout, publish/unpublish, and version snapshots
-- Reviewer workflow with progress tracking, Save and Next, row-level attachments, reviewer-uploaded attachments, and sign-out from the reviewer shell
+- Reviewer workflow with progress tracking, Save and Next, merged row attachments (intake files via signed in-app URLs, Smartsheet-only files via Smartsheet download URLs, reviewer uploads via signed URLs), reviewer-uploaded attachments, and sign-out from the reviewer shell
 - Admin preview and export tools, including ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and schema-drift protection
 
 ## Stack
 
 - Next.js 16 App Router + TypeScript
-- PostgreSQL for app-owned state
+- PostgreSQL for app-owned state (often hosted on Supabase; migrations live under `supabase/migrations/`)
 - Smartsheet for structured nominee row data
-- Vercel Blob for private file storage
-- Vercel for deployment
+- Vercel Blob for private file bytes (uploads are **not** stored in Supabase Storage)
+- Vercel for deployment (including scheduled jobs for blob cleanup and Smartsheet attachment sync)
 
 ## Build contract
 
@@ -45,7 +45,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
    - `SEED_ADMIN_EMAIL`: optional, defaults to `admin@example.com`
    - `NEXT_PUBLIC_APP_URL`: app base URL, required for production-facing links and signed file routes
    - `BLOB_READ_WRITE_TOKEN`: required for intake uploads, reviewer uploads, and attachment export
-   - `CRON_SECRET`: required for protected cron-backed cleanup routes
+   - `CRON_SECRET`: required for protected cron-backed routes (blob cleanup and Smartsheet attachment sync worker)
    - `ALLOWED_REVIEWER_EMAIL_DOMAIN`: optional reviewer-assignment domain restriction, defaults to `wsu.edu`
 
 3. Initialize a fresh database:
@@ -79,6 +79,7 @@ Current migration set:
 - `007_layout_json.sql`
 - `008_reviewer_field_help_text.sql`
 - `009_enable_public_rls.sql`
+- `010_smartsheet_attachment_sync.sql` (intake `push_to_smartsheet`, per-file attachment sync state, submission aggregate sync status)
 
 Important: deploying code is not enough by itself. New code that depends on new tables or columns still requires the matching SQL migration to be applied to the target database.
 
@@ -99,6 +100,7 @@ npm run build
 - Code changes: commit and push to GitHub, then wait for the Vercel deployment to finish
 - Environment variable changes: add/update them in Vercel, then redeploy
 - Database changes: apply the matching SQL migration to the production database separately
+- **Cron jobs:** `vercel.json` schedules `GET /api/admin/jobs/cleanup-blobs` (daily) and `GET /api/admin/jobs/sync-smartsheet-attachments` (every minute). When `CRON_SECRET` is set, those routes require `Authorization: Bearer <CRON_SECRET>` (Vercel’s cron integration sends this when configured for your plan)
 
 Typical production environment variables:
 
@@ -118,7 +120,7 @@ Typical production environment variables:
 
 ## Key docs
 
-- [PROJECT_SPEC.md](PROJECT_SPEC.md): canonical platform architecture, current behavior, and remaining build specifications
+- [PROJECT_SPEC.md](PROJECT_SPEC.md): canonical platform architecture and current behavior
 - [instruction.md](instruction.md): operator-facing setup and deployment walkthrough
 
 ## Security notes

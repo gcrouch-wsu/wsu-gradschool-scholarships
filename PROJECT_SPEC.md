@@ -6,8 +6,8 @@ Canonical product/spec document for this repo. For setup and deployment, see `RE
 
 ## Spec revision
 
-- **Last updated:** 2026-03-25
-- **Meaning:** This date marks the spec baseline aligned with the **current build** and stated expectations. When behavior or scope changes materially, update the relevant sections and bump this date.
+- **Last updated:** 2026-04-05
+- **Meaning:** This date marks the spec baseline aligned with the **current shipped behavior**. When behavior or scope changes materially, update the relevant sections and bump this date.
 
 ---
 
@@ -17,7 +17,7 @@ This app is a workflow layer on top of Smartsheet. It supports programs that kee
 
 The initial use case is graduate scholarship nomination review, but the platform is intentionally general enough for grants, requests, and similar review-cycle workflows.
 
-Smartsheet remains the source of truth for structured row data. Postgres stores users, sessions, assignments, builder configuration, published snapshots, submission lifecycle state, file metadata, and audit logs. Vercel Blob stores uploaded files privately.
+Smartsheet remains the source of truth for structured row data. Postgres stores users, sessions, assignments, builder configuration, published snapshots, submission lifecycle state, file metadata (including intake attachment sync state), and audit logs. Vercel Blob stores uploaded file bytes privately (this app does **not** use Supabase Storage for binaries).
 
 ---
 
@@ -55,7 +55,7 @@ Migrations live in `supabase/migrations/`.
 | `007_layout_json.sql` | `layout_json` on `intake_forms` and `view_configs` |
 | `008_reviewer_field_help_text.sql` | `help_text` on reviewer `field_configs` |
 | `009_enable_public_rls.sql` | enables RLS on app-owned public tables to block unintended Supabase Data API exposure |
-| _(next sequential)_ | native Smartsheet attachment mirroring changes described below |
+| `010_smartsheet_attachment_sync.sql` | `push_to_smartsheet` on `intake_form_fields`; sync columns, indexes, and aggregate trigger on `intake_submission_files` / `intake_submissions` for asynchronous native `FILE` mirror to Smartsheet |
 
 ---
 
@@ -67,7 +67,7 @@ Migrations live in `supabase/migrations/`.
 | `ENCRYPTION_KEY` | Yes | encryption key for Smartsheet tokens, IP hashing, and signed file URLs |
 | `NEXT_PUBLIC_APP_URL` | Yes in production | public app base URL for live-form links and signed file routes |
 | `BLOB_READ_WRITE_TOKEN` | Yes for file features | intake uploads, reviewer uploads, cleanup, signed access, ZIP export |
-| `CRON_SECRET` | Yes for cron routes | protects cleanup and background job routes |
+| `CRON_SECRET` | Yes for cron routes | protects blob cleanup and Smartsheet attachment sync worker routes |
 | `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | default reviewer-assignment domain restriction |
 | `SEED_ADMIN_EMAIL` | No | local bootstrap admin email |
 | `SEED_ADMIN_PASSWORD` | Local only | password for the initial seeded admin |
@@ -82,13 +82,13 @@ Migrations live in `supabase/migrations/`.
 - PICKLIST writes use `strict: true`.
 - CONTACT_LIST / MULTI_CONTACT_LIST are out of scope for public intake writes.
 - MULTI_CONTACT_LIST clearing must use `{ "value": "" }`, not `values: []`.
-- Smartsheet LINK attachments are not used. The only future attachment push path is native `FILE` mirroring.
+- Native **FILE** mirroring from intake to Smartsheet row attachments is **shipped** (per-field opt-in). Smartsheet LINK attachments are not used for that path.
 
 ---
 
 ## Working Rules
 
-1. When a fix ships, move it from Remaining / Next Build into Fixes Applied.
+1. When a fix ships, add it to Fixes Applied and update narrative sections so operators are not reading obsolete “planned” text.
 2. Any change to Smartsheet write helpers must be evaluated against the rules above.
 3. Watch for smart quotes or other non-ASCII punctuation in JSX after AI/editor edits.
 4. Use `npx tsc --noEmit` as a fast precheck; treat `npm run build` as the final local verifier.
@@ -106,8 +106,8 @@ Migrations live in `supabase/migrations/`.
 - Cycle setup: Smartsheet connection, sheet sync, cycle status, external reviewer options
 - Reviewer builder: column mapping, purposes, field-level blind hide flags, optional per-field helper text, multi-role management, per-role view/edit permissions matrix with inline meaning guidance, row-based layout with 1/2/3-up desktop rows and drag row reorder, publish/unpublish, version snapshots, import/export/clone, delete/reset
 - Public intake builder: draft/publish/unpublish, versioned snapshots, rich-text instructions, multi-file PDF uploads, delete guard, optional character limits for `short_text` and `long_text`, short-vs-narrative text input style for mapped Smartsheet text columns, row-based desktop layout with 1/2/3-up rows and drag row reorder
-- Public submit workflow: direct Blob uploads, metadata-only submit route, Smartsheet row creation, submission idempotency, schema-drift detection, rate limiting, honeypot
-- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view, reviewer-uploaded attachments, per-role field visibility/editability, field-level blind hiding that overrides reviewer access at runtime, helper text/instructions, reviewer sign-out in the shell header, published-layout rendering from canonical `layout_json`
+- Public submit workflow: direct Blob uploads, metadata-only submit route, Smartsheet row creation, submission idempotency, schema-drift detection, rate limiting, honeypot, optional async mirror of intake PDFs to Smartsheet row attachments (cron worker)
+- Reviewer workflow: direct routing into applicant pages, progress tracking, Save and Next, merged attachment view (intake files opened via signed in-app URLs when the blob exists; Smartsheet-only attachments use Smartsheet download URLs; `deleted_from_blob` falls back to Smartsheet when the staged blob was removed), reviewer-uploaded attachments, per-role field visibility/editability, field-level blind hiding that overrides reviewer access at runtime, helper text/instructions, reviewer sign-out in the shell header, published-layout rendering from canonical `layout_json`
 - Admin preview and export: role-scoped reviewer preview config, merged attachments, ZIP export of intake attachments
 - Audit logging, encrypted Smartsheet credentials, DB-backed sessions, and app-controlled signed file access
 
@@ -193,6 +193,8 @@ Reviewer roles, field permissions, and role-scoped preview are now shipped on cy
 18. Schema sync refresh shipped: syncing Smartsheet columns now refreshes draft reviewer/intake mapped metadata, including derived labels and intake picklist options where they still mirror Smartsheet
 19. Shared reviewer/admin sign-out shipped: the reviewer shell now includes a logout control, and the reviewer header only shows `Admin` when the signed-in user actually has admin access
 20. Public-table RLS hardening shipped: app-owned tables in `public` now enable RLS by migration so Supabase Security Advisor no longer treats them as exposed without row controls
+21. Smartsheet native attachment mirroring shipped: per-field `push_to_smartsheet`, async sync job (`/api/admin/jobs/sync-smartsheet-attachments`), simple-upload attach API, dedupe and retry policy, staged blob retention per migration `010`
+22. Reviewer/admin merged attachments updated: list API hydrates missing Smartsheet download URLs when the list endpoint omits them; synced intake files prefer **signed app URLs** (`intake_upload_synced`) so reviewers open files from Blob-backed routes unless the blob was already removed (`deleted_from_blob` → Smartsheet URL)
 
 ---
 
@@ -253,204 +255,15 @@ interface SavedLayoutJson {
 
 ---
 
-## Next Build: Smartsheet Native Attachment Mirroring
+## Smartsheet native attachment mirroring (shipped)
 
-**Implementation order, engineering constraints, and design-review notes:** `BUILD.md`.
+When **Push uploaded files to Smartsheet** is enabled on an intake **file** field, each submitted PDF is copied to the nominee row as a native Smartsheet **`FILE`** attachment. Upload bytes land in **Vercel Blob** first; mirroring is **asynchronous** via `GET /api/admin/jobs/sync-smartsheet-attachments` (Vercel cron, `Authorization: Bearer ${CRON_SECRET}`). Submission success does not wait for mirroring.
 
-### Purpose and design decisions
+**Caps:** 30 MB per file on push-enabled fields; 100 MB on fields without push. **Schema:** migration `010_smartsheet_attachment_sync.sql` (`push_to_smartsheet`, per-file `attachment_sync_status`, aggregate status on `intake_submissions`). **Attach API:** simple (non-multipart) body upload plus helpers in `src/lib/smartsheet.ts` (list pagination, optional URL hydration from `GET /sheets/{sheetId}/attachments/{attachmentId}` when the list response omits `url`).
 
-When an admin enables "Push to Smartsheet" on an intake attachment field, uploaded PDFs from that field should be mirrored into Smartsheet as native `FILE` attachments on the submission row.
+**Merged attachments (reviewer + admin preview):** Intake files still in Blob are exposed as **`intake_upload_*` / `intake_upload_synced`** with signed links to `/api/intake-files/...`. Rows in **`deleted_from_blob`** after staged cleanup use Smartsheet download URLs when a matching row attachment exists. Purely Smartsheet attachments (no intake row) use Smartsheet URLs. Reviewer-uploaded files use `/api/reviewer-files/...` signed URLs.
 
-- Blob remains the upload/staging layer for all programs
-- Sync is asynchronous; submission success is not coupled to Smartsheet attachment API availability
-- Each attachment field opts in independently
-- The 30 MB Smartsheet file size limit applies only to push-enabled fields
-- Blob-only fields retain the current 100 MB cap
-- ZIP export remains the primary long-term archive path and works regardless of mirroring
-
-| Area | Decision |
-|---|---|
-| Toggle location | per-field checkbox in intake builder field properties |
-| Storage layer | Blob first; Smartsheet is the mirror target |
-| Attachment type | native `FILE` attachments only |
-| Sync timing | asynchronous background worker; never inline in the submit route |
-| Submission success | row creation + DB persistence; sync failure does not invalidate the submission |
-| Blob retention after sync | 24 hours after confirmed Smartsheet sync |
-| Failed file retention | 7 days after the last sync attempt |
-
-### Data model changes
-
-Migration placeholder: `010_smartsheet_attachment_sync.sql` unless another migration ships first.
-
-Add to `intake_form_fields`:
-
-```sql
-push_to_smartsheet BOOLEAN NOT NULL DEFAULT FALSE
-```
-
-Only meaningful on file-type intake fields.
-
-Add to `intake_submission_files`:
-
-```sql
-attachment_sync_status   VARCHAR(30) NOT NULL DEFAULT 'not_applicable'
-smartsheet_attachment_id BIGINT
-smartsheet_attachment_name VARCHAR(255)
-sync_attempt_count       INT NOT NULL DEFAULT 0
-last_sync_attempt_at     TIMESTAMPTZ
-synced_at                TIMESTAMPTZ
-next_sync_attempt_at     TIMESTAMPTZ
-sync_error_json          JSONB
-blob_delete_after        TIMESTAMPTZ
-blob_deleted_at          TIMESTAMPTZ
-```
-
-Allowed `attachment_sync_status` values:
-
-| Value | Meaning |
-|---|---|
-| `not_applicable` | push disabled for that field |
-| `pending` | queued, not yet claimed |
-| `syncing` | claimed by the current worker run |
-| `synced` | successfully attached to Smartsheet |
-| `retryable_failed` | transient failure; should retry |
-| `permanent_failed` | exhausted or non-retryable failure |
-| `deleted_from_blob` | Blob staging object removed after confirmed sync |
-
-Add to `intake_submissions`:
-
-```sql
-attachment_sync_status VARCHAR(30) NOT NULL DEFAULT 'not_applicable'
-```
-
-Aggregate values: `not_applicable`, `pending`, `partial`, `synced`, `failed`.
-
-### File size and upload rules
-
-- If `push_to_smartsheet = false`, enforce the current 100 MB limit
-- If `push_to_smartsheet = true`, enforce a 30 MB limit at upload-token issuance
-- Public form UI must show the correct limit per field
-- PDF only regardless of push setting
-
-### Worker design
-
-Route: `GET /api/admin/jobs/sync-smartsheet-attachments`  
-Protection: `CRON_SECRET`  
-Schedule: Vercel cron every 1 minute
-
-Each run should select files where:
-
-- `attachment_sync_status IN ('pending', 'retryable_failed')`
-- `next_sync_attempt_at IS NULL OR next_sync_attempt_at <= now()`
-- work is grouped by Smartsheet connection token
-- max 5 files per connection per run
-
-Before selecting new files, reset stale `syncing` rows older than 10 minutes back to `retryable_failed`.
-
-Claim work atomically:
-
-```sql
-UPDATE intake_submission_files
-SET attachment_sync_status = 'syncing',
-    last_sync_attempt_at = now(),
-    sync_attempt_count = sync_attempt_count + 1
-WHERE id = $id
-  AND attachment_sync_status IN ('pending', 'retryable_failed')
-RETURNING *
-```
-
-Retry/backoff policy:
-
-- attempt 1: immediate
-- attempt 2: +5 minutes
-- attempt 3: +30 minutes
-- attempt 4: +2 hours
-- maximum 4 attempts
-
-Retryable failures include Smartsheet `429`, transient `5xx`, and network timeouts. Permanent failures include missing Blob objects, oversized files, missing Smartsheet row IDs, revoked credentials, or non-`429` `4xx` errors.
-
-### Smartsheet API layer
-
-Add `attachFileToRow(...)` in `src/lib/smartsheet.ts`:
-
-- accepts token, sheet ID, row ID, filename, content type, and a stream/blob source
-- uses `multipart/form-data`
-- returns structured `httpStatus`, `errorCode`, and `attachmentId`
-
-Duplicate prevention requires both:
-
-1. If `smartsheet_attachment_id` is already set, skip the attach call and treat the file as synced.
-2. On retries, query row attachments and match by filename and file size so a crash between Smartsheet success and DB update does not create duplicates.
-
-### Attachment API behavior
-
-Reviewer and admin attachment APIs should continue to return a merged list.
-
-Normalized payload shape:
-
-| Field | Values |
-|---|---|
-| `id` | attachment or file row ID |
-| `name` | filename |
-| `url` | Smartsheet URL or a fresh signed Blob URL |
-| `source` | `smartsheet`, `intake_upload_pending`, `intake_upload_failed`, `intake_upload_blob_only` |
-| `syncStatus` | opaque sync state, admin-only for failed states |
-| `isFallback` | boolean |
-
-Rules:
-
-- `pending` and `syncing` both surface as `intake_upload_pending`
-- signed Blob URLs for fallback entries must be generated at read time
-- once a synced Smartsheet attachment exists, do not also show a duplicate Blob fallback entry
-- blob-only files continue to work exactly as they do now
-
-### Admin UX changes
-
-In the intake builder, attachment fields should show:
-
-- checkbox: `Push uploaded files to Smartsheet as native attachments`
-- note: `Files from this field will be mirrored to Smartsheet after submission. Maximum file size is 30 MB.`
-- file-size copy updates from 100 MB to 30 MB when enabled
-
-Admin submission tooling should show aggregate sync status and counts for push-enabled files, plus recovery actions:
-
-- `Retry attachment sync`
-- `Mark attachment failure resolved`
-- `View staged file`
-
-### Cleanup rules
-
-Pending orphans:
-
-- delete staged files that never reached a completed submission after 24 hours
-- never touch file rows that belong to a completed `intake_submissions` record
-
-Synced file cleanup:
-
-- only delete staged Blob files when all of these are true:
-  - `attachment_sync_status = 'synced'`
-  - `smartsheet_attachment_id IS NOT NULL`
-  - `blob_delete_after <= now()`
-  - `blob_deleted_at IS NULL`
-
-Failed file cleanup:
-
-- retain `permanent_failed` staged files for 7 days after `last_sync_attempt_at`
-- then allow cleanup if they are still `permanent_failed` and `blob_deleted_at IS NULL`
-
-Files with `attachment_sync_status = 'not_applicable'` are never touched by sync cleanup.
-
-### Recommended build order
-
-1. Add the next migration with `push_to_smartsheet` on `intake_form_fields`
-2. Add the attachment-field toggle in the intake builder
-3. Enforce the 30 MB cap at upload-token issuance when mirroring is enabled
-4. Add `attachFileToRow(...)` in `src/lib/smartsheet.ts`
-5. Add sync-status fields and aggregate updates in `src/lib/intake.ts`
-6. Add the cron worker route with atomic claiming, stale-sync recovery, backoff, and duplicate guard
-7. Update reviewer/admin attachment APIs to prefer synced Smartsheet entries while still serving Blob fallbacks
-8. Add admin submission visibility and retry tooling
-9. Extend cleanup to delete staged Blobs only after confirmed sync
+**Operations:** See `vercel.json` for cron schedules (blob cleanup and attachment sync). `instruction.md` troubleshooting covers missing migration `010` and cron/auth failures.
 
 ---
 
@@ -463,7 +276,7 @@ Still worth adding:
 - layout-builder save/publish edge cases
 - intake publish/save/delete paths
 - admin reset/delete safety flows
-- attachment sync worker tests once native mirroring is built
+- attachment sync worker and Smartsheet attach edge cases (optional expansion)
 
 ---
 
