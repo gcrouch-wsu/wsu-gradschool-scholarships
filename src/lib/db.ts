@@ -41,7 +41,9 @@ function stripNoVerifySslmodeParams(rawUrl: string): string {
 }
 
 function stripAnySslmodeParams(rawUrl: string): string {
-  return normalizeQueryString(rawUrl.replace(/([?&])sslmode=[^&]*/gi, (_, p: string) => (p === "?" ? "?" : "")));
+  return normalizeQueryString(
+    rawUrl.replace(/([?&])sslmode=[^&]*/gi, (_, p: string) => (p === "?" ? "?" : ""))
+  );
 }
 
 function urlStillRequestsNoVerify(url: string): boolean {
@@ -59,14 +61,14 @@ export function buildDatabasePoolOptions(rawUrl: string): PoolConfig {
     };
   }
 
-  const connectionString = stripNoVerifySslmodeParams(rawUrl);
+  const ca = getDatabaseCaCert();
+  const connectionString = ca ? stripAnySslmodeParams(rawUrl) : stripNoVerifySslmodeParams(rawUrl);
   if (urlStillRequestsNoVerify(connectionString)) {
     throw new Error(
       `${INSECURE_SSL_ENV_VAR} must be true before DATABASE_URL can disable TLS verification.`
     );
   }
 
-  const ca = getDatabaseCaCert();
   return {
     connectionString,
     ...(ca ? { ssl: { rejectUnauthorized: true, ca } } : {}),

@@ -28,6 +28,7 @@ describe("database pool options", () => {
       rejectUnauthorized: true,
       ca: "-----BEGIN CERTIFICATE-----\nLINE\n-----END CERTIFICATE-----",
     });
+    expect(options.connectionString).toBe("postgresql://user:pass@example.com:5432/app");
   });
 
   it("strips sslmode=no-verify when the insecure flag is off", () => {
