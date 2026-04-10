@@ -7,6 +7,7 @@ import type { PoolConfig } from "pg";
 
 const globalForDb = globalThis as unknown as { pool: Pool | undefined };
 const INSECURE_SSL_ENV_VAR = "SCHOLARSHIP_DATABASE_INSECURE_SSL";
+const DATABASE_CA_CERT_ENV_VAR = "DATABASE_CA_CERT";
 const DEFAULT_POOL_OPTIONS = {
   max: 2,
   idleTimeoutMillis: 10000,
@@ -16,6 +17,14 @@ const DEFAULT_POOL_OPTIONS = {
 export function isDatabaseInsecureSslEnabled(): boolean {
   const raw = process.env[INSECURE_SSL_ENV_VAR]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+export function getDatabaseCaCert(): string | null {
+  const raw = process.env[DATABASE_CA_CERT_ENV_VAR];
+  if (!raw?.trim()) {
+    return null;
+  }
+  return raw.replace(/\\n/g, "\n").trim();
 }
 
 function normalizeQueryString(url: string): string {
@@ -57,8 +66,10 @@ export function buildDatabasePoolOptions(rawUrl: string): PoolConfig {
     );
   }
 
+  const ca = getDatabaseCaCert();
   return {
     connectionString,
+    ...(ca ? { ssl: { rejectUnauthorized: true, ca } } : {}),
     ...DEFAULT_POOL_OPTIONS,
   };
 }

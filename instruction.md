@@ -98,6 +98,7 @@ In Vercel, go to **Settings** -> **Environment Variables** and make sure these e
 | Variable | Required | Notes |
 |---|---|---|
 | `DATABASE_URL` | Yes | Postgres connection string |
+| `DATABASE_CA_CERT` | Optional | Root CA certificate for strict DB TLS verification |
 | `ENCRYPTION_KEY` | Yes | Generate a random 32-byte hex string |
 | `NEXT_PUBLIC_APP_URL` | Yes | Production base URL, e.g. `https://your-project.vercel.app` |
 | `BLOB_READ_WRITE_TOKEN` | Yes | Usually added automatically when Blob is attached |

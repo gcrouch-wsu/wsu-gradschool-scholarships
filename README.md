@@ -47,6 +47,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
    - `BLOB_READ_WRITE_TOKEN`: required for intake uploads, reviewer uploads, and attachment export
    - `CRON_SECRET`: required for protected cron-backed routes (blob cleanup and Smartsheet attachment sync worker)
    - `ALLOWED_REVIEWER_EMAIL_DOMAIN`: optional reviewer-assignment domain restriction, defaults to `wsu.edu`
+   - `DATABASE_CA_CERT`: optional root CA certificate for strict Postgres TLS verification
    - `SCHOLARSHIP_DATABASE_INSECURE_SSL`: optional last-resort flag that enables `sslmode=no-verify`; leave unset unless certificate verification truly fails
 
 3. Initialize a fresh database:
@@ -106,6 +107,7 @@ npm run build
 Typical production environment variables:
 
 - `DATABASE_URL`
+- `DATABASE_CA_CERT` if your provider requires an explicit trusted CA for strict TLS
 - `ENCRYPTION_KEY`
 - `NEXT_PUBLIC_APP_URL`
 - `BLOB_READ_WRITE_TOKEN`

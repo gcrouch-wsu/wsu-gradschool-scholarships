@@ -17,6 +17,19 @@ describe("database pool options", () => {
     expect(options.ssl).toBeUndefined();
   });
 
+  it("uses an explicit CA certificate when provided", () => {
+    vi.stubEnv("DATABASE_CA_CERT", "-----BEGIN CERTIFICATE-----\\nLINE\\n-----END CERTIFICATE-----");
+
+    const options = buildDatabasePoolOptions(
+      "postgresql://user:pass@example.com:5432/app?sslmode=require"
+    );
+
+    expect(options.ssl).toEqual({
+      rejectUnauthorized: true,
+      ca: "-----BEGIN CERTIFICATE-----\nLINE\n-----END CERTIFICATE-----",
+    });
+  });
+
   it("strips sslmode=no-verify when the insecure flag is off", () => {
     const options = buildDatabasePoolOptions(
       "postgresql://user:pass@example.com:5432/app?sslmode=no-verify"
