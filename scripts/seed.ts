@@ -6,11 +6,11 @@
  * Creates one platform admin if users table is empty.
  * Password is passed via SEED_ADMIN_PASSWORD env var (min 8 chars).
  */
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import * as fs from "fs";
 import * as path from "path";
+import { buildDatabasePoolOptions } from "../src/lib/db";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const SEED_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
@@ -26,12 +26,7 @@ async function main() {
     process.exit(1);
   }
 
-  const withoutSslmode = DATABASE_URL.replace(/([?&])sslmode=[^&]*/g, (_, p) => (p === "?" ? "?" : "")).replace(/\?$/, "");
-  const connectionString = withoutSslmode + (withoutSslmode.includes("?") ? "&" : "?") + "sslmode=no-verify";
-  const pool = new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-  });
+  const pool = new Pool(buildDatabasePoolOptions(DATABASE_URL));
 
   try {
     const migrationsDir = path.join(__dirname, "..", "supabase", "migrations");

@@ -103,6 +103,7 @@ In Vercel, go to **Settings** -> **Environment Variables** and make sure these e
 | `BLOB_READ_WRITE_TOKEN` | Yes | Usually added automatically when Blob is attached |
 | `CRON_SECRET` | Yes | Any long random secret string |
 | `ALLOWED_REVIEWER_EMAIL_DOMAIN` | Optional | Usually `wsu.edu` |
+| `SCHOLARSHIP_DATABASE_INSECURE_SSL` | Optional | Leave unset unless DB certificate verification fails and you intentionally need relaxed TLS |
 
 #### Generate `ENCRYPTION_KEY`
 

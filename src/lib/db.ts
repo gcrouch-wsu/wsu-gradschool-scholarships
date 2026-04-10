@@ -3,26 +3,75 @@
  * Uses DATABASE_URL from environment (Vercel Postgres or external).
  */
 import { Pool } from "pg";
+import type { PoolConfig } from "pg";
 
 const globalForDb = globalThis as unknown as { pool: Pool | undefined };
+const INSECURE_SSL_ENV_VAR = "SCHOLARSHIP_DATABASE_INSECURE_SSL";
+const DEFAULT_POOL_OPTIONS = {
+  max: 2,
+  idleTimeoutMillis: 10000,
+  connectionTimeoutMillis: 5000,
+} satisfies Pick<PoolConfig, "max" | "idleTimeoutMillis" | "connectionTimeoutMillis">;
+
+export function isDatabaseInsecureSslEnabled(): boolean {
+  const raw = process.env[INSECURE_SSL_ENV_VAR]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function normalizeQueryString(url: string): string {
+  return url.replace(/\?&+/g, "?").replace(/&&+/g, "&").replace(/[?&]$/g, "");
+}
+
+function stripNoVerifySslmodeParams(rawUrl: string): string {
+  return normalizeQueryString(
+    rawUrl
+      .replace(/([?&])sslmode=no-verify\b/gi, (_, p: string) => (p === "?" ? "?" : ""))
+      .replace(/([?&])sslmode=no%2dverify\b/gi, (_, p: string) => (p === "?" ? "?" : ""))
+      .replace(/([?&])sslmode=no%2Dverify\b/gi, (_, p: string) => (p === "?" ? "?" : ""))
+  );
+}
+
+function stripAnySslmodeParams(rawUrl: string): string {
+  return normalizeQueryString(rawUrl.replace(/([?&])sslmode=[^&]*/gi, (_, p: string) => (p === "?" ? "?" : "")));
+}
+
+function urlStillRequestsNoVerify(url: string): boolean {
+  return /sslmode\s*=\s*no-verify\b/i.test(url) || /sslmode\s*=\s*no%2dverify\b/i.test(url);
+}
+
+export function buildDatabasePoolOptions(rawUrl: string): PoolConfig {
+  if (isDatabaseInsecureSslEnabled()) {
+    const stripped = stripAnySslmodeParams(rawUrl);
+    const connectionString = `${stripped}${stripped.includes("?") ? "&" : "?"}sslmode=no-verify`;
+    return {
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      ...DEFAULT_POOL_OPTIONS,
+    };
+  }
+
+  const connectionString = stripNoVerifySslmodeParams(rawUrl);
+  if (urlStillRequestsNoVerify(connectionString)) {
+    throw new Error(
+      `${INSECURE_SSL_ENV_VAR} must be true before DATABASE_URL can disable TLS verification.`
+    );
+  }
+
+  return {
+    connectionString,
+    ...DEFAULT_POOL_OPTIONS,
+  };
+}
 
 export function getPool(): Pool {
   if (!globalForDb.pool) {
-    let connectionString = process.env.DATABASE_URL;
+    const connectionString = process.env.DATABASE_URL?.trim();
     if (!connectionString) {
       throw new Error(
         "DATABASE_URL is not set. Configure Postgres connection for local dev and Vercel."
       );
     }
-    const withoutSslmode = connectionString.replace(/([?&])sslmode=[^&]*/g, (_, p) => (p === "?" ? "?" : "")).replace(/\?$/, "");
-    connectionString = withoutSslmode + (withoutSslmode.includes("?") ? "&" : "?") + "sslmode=no-verify";
-    globalForDb.pool = new Pool({
-      connectionString,
-      ssl: { rejectUnauthorized: false },
-      max: 2,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-    });
+    globalForDb.pool = new Pool(buildDatabasePoolOptions(connectionString));
   }
   return globalForDb.pool;
 }
