@@ -57,6 +57,7 @@ next-env.d.ts
 
 # local reference files (not for repo)
 /input_forms
+/certificate/
 
 # local tool state
 .claude/
