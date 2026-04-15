@@ -43,7 +43,7 @@ Admin-managed workflow layer on top of Smartsheet for scholarship-style review c
    Commonly needed additional values:
 
    - `SEED_ADMIN_EMAIL`: optional, defaults to `admin@example.com`
-   - `NEXT_PUBLIC_APP_URL`: app base URL, required for production-facing links and signed file routes
+   - `NEXT_PUBLIC_APP_URL`: app base URL for production-facing absolute links (e.g. intake URL shown to admins); signed file download URLs in code are **relative** (`/api/intake-files/...`, `/api/reviewer-files/...`) and do not depend on this variable
    - `BLOB_READ_WRITE_TOKEN`: required for intake uploads, reviewer uploads, and attachment export
    - `CRON_SECRET`: required for protected cron-backed routes (blob cleanup and Smartsheet attachment sync worker)
    - `ALLOWED_REVIEWER_EMAIL_DOMAIN`: optional reviewer-assignment domain restriction, defaults to `wsu.edu`
@@ -136,3 +136,4 @@ Typical production environment variables:
 - Audit logs intentionally avoid storing full public submission payloads
 - Public app tables now enable Postgres Row Level Security by migration. This app does not rely on Supabase PostgREST for table access; it uses server-side `pg` connections only.
 - Any future app-owned table added to `public` must ship with RLS enabled in the same schema change.
+- For the canonical security and runtime model (proxy vs API auth, cron bearer behavior, env vars, backlog), see [PROJECT_SPEC.md](PROJECT_SPEC.md) → **Current implementation (mirrors codebase)**.

@@ -66,3 +66,4 @@ next-env.d.ts
 *.md
 !README.md
 !instruction.md
+!PROJECT_SPEC.md

@@ -405,7 +405,7 @@ Do not assume Vercel deploys run SQL migrations for you.
 | A code deploy succeeds but a feature still fails with missing-table errors | The code is deployed but the matching SQL migration was not applied |
 | Intake save/publish errors mentioning a missing column such as `push_to_smartsheet` | Apply `010_smartsheet_attachment_sync.sql` to the database |
 | Push-enabled files never appear on Smartsheet rows | Confirm Vercel **Cron Jobs** are enabled, `CRON_SECRET` matches what the job sends, and deployment includes `vercel.json` schedules for `sync-smartsheet-attachments` |
-| Reviewer sees attachment names but links do not open | Deploy current code paths for merged attachments and signed intake URLs; confirm `BLOB_READ_WRITE_TOKEN` and `NEXT_PUBLIC_APP_URL` are set |
+| Reviewer sees attachment names but links do not open | Deploy current code paths for merged attachments and signed intake URLs; confirm `BLOB_READ_WRITE_TOKEN` and `ENCRYPTION_KEY` (HMAC for signed URLs). `NEXT_PUBLIC_APP_URL` is not used to build those download links |
 
 ---
 

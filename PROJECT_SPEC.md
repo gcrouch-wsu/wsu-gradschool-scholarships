@@ -4,10 +4,13 @@ Canonical product/spec document for this repo. For setup and deployment, see `RE
 
 ---
 
-## Spec revision
+## Spec changelog
 
-- **Last updated:** 2026-04-05
-- **Meaning:** This date marks the spec baseline aligned with the **current shipped behavior**. When behavior or scope changes materially, update the relevant sections and bump this date.
+- **2026-04-15 (follow-up)** — Independent review (Codex): fixed **`src/proxy.ts`** public-path logic — a `"/"` + `startsWith` entry had made **all** page routes appear public to the proxy (login redirect was dead). Spec/README corrected for **cookie vs DB session expiry**, **`NEXT_PUBLIC_APP_URL`** (not used to build signed file URLs), **template GET access** for program admins, **`must_change_password`** not enforced on most APIs, and backlog notes (CSRF posture, session revocation).
+- **2026-04-15** — Security/architecture audit pass: documented request gating (`src/proxy.ts` as Next.js **Proxy** middleware), per-route API authorization, cron bearer behavior vs `CRON_SECRET`, public-intake controls and trust assumptions, dual use of `ENCRYPTION_KEY`, and dependency audit posture. Added **Current implementation (mirrors codebase)**. Refreshed env-var notes and backlog (login rate limiting, cron hardening).
+- **2026-04-05** — Prior baseline: shipped behavior, layout system, Smartsheet attachment mirroring, RLS migration, reviewer roles.
+
+**Last reviewed for code alignment:** 2026-04-15
 
 ---
 
@@ -23,20 +26,94 @@ Smartsheet remains the source of truth for structured row data. Postgres stores 
 
 ## Technical Architecture
 
-- Framework: Next.js App Router on Vercel
-- Build command: `vercel.json` runs `npm run build` -> `next build` (Turbopack on Next.js 16)
+- Framework: Next.js 16 App Router on Vercel
+- Build command: `vercel.json` runs `npm run build` → `next build` (Turbopack is the default bundler for this Next.js version)
 - Styling: Tailwind CSS v4
-- Auth: custom DB-backed sessions with bcrypt
+- Auth: custom DB-backed sessions with bcrypt (no third-party OAuth)
 - Storage: PostgreSQL (app state), Smartsheet (row data), Vercel Blob (private uploads)
-- Encryption: AES-256-GCM for Smartsheet credentials via `ENCRYPTION_KEY`
+- Encryption: AES-256-GCM for Smartsheet tokens at rest (`src/lib/encryption.ts`, key material from `ENCRYPTION_KEY` via scrypt); HMAC-SHA256 for signed public/reviewer file URLs and for hashed intake rate-limit IPs (`src/lib/intake.ts`, same env string as secret material)
 - Runtime: routes using `pg`, crypto, Blob tokens, or ZIP streams should explicitly export `runtime = "nodejs"`
+- **Request gating:** `src/proxy.ts` is the Next.js **Proxy** entry (shown as “Proxy (Middleware)” in `next build` output). It redirects **protected page** navigations without a `session_id` cookie to `/login` (with `redirect=`). **Public document paths** (no cookie): `/` (home), `/login`, and `/submit/*` (public intake). **`/api/*` is not authenticated at the proxy layer**—each Route Handler calls `getSessionUser()` / `canManageCycle()` / `canManageProgram()` / platform-admin checks as appropriate. Intentionally public APIs include `/api/submit/*`, `/api/intake-files/*` (HMAC-signed query), and `/api/auth/login` / `/api/auth/logout`.
 
 ### Build guardrails
 
 - `npm run build` is the source of truth for what Vercel executes.
 - Do not add `--webpack` unless a reproduced production-build regression justifies it.
 - Run `npx tsc --noEmit` when touching shared types, route contracts, or layout persistence.
-- Run `npm test` when changing auth, file handling, layout logic, or Smartsheet read/write paths.
+- Run `npm test` (`vitest run`, see `package.json`) when changing auth, file handling, layout logic, or Smartsheet read/write paths.
+- Run `npm run lint` before merge when touching `src/`.
+
+---
+
+## Current implementation (mirrors codebase)
+
+This section summarizes **what the code does today** for security-sensitive and runtime behavior. Feature-level product detail remains in **What Is Built** and later sections.
+
+### Auth and sessions
+
+- **Model:** Email + password (`users.password_hash`, bcrypt cost 12). No OAuth or SSO.
+- **Session storage:** `sessions` table (`id` UUID, `user_id`, `expires_at`, `revoked_at`, `last_seen_at`). Cookie name `session_id` holds the session UUID.
+- **Cookie flags:** `httpOnly`, `sameSite: "lax"`, `path: "/"`, `secure` when `NODE_ENV === "production"`, `maxAge` set **once** at login from the same idle-timeout minutes as DB (`setSessionCookie` in `auth.ts`, called from `POST /api/auth/login` only).
+- **DB expiry (sliding on server):** Each successful `getSessionUser()` extends `sessions.expires_at` and `last_seen_at`. **`SessionWarning`** polls `GET /api/auth/session-status` every minute, which calls `getSessionUser()` and therefore also extends DB expiry while a tab stays open.
+- **Cookie vs DB mismatch:** The browser cookie **`maxAge` is not refreshed** on activity—only the row in `sessions` is extended. Users keep working until the cookie disappears or `getSessionUser()` rejects the row; behavior is “server-tracked idle” plus “fixed browser cookie lifetime from login,” not a single unified sliding window.
+- **Invalidation:** `POST /api/auth/logout` revokes **only the current** session row and deletes the cookie. Password change does not revoke other sessions.
+- **Enforcement:** `/admin` and `/reviewer` layouts call `getSessionUser()` and redirect; `must_change_password` forces `/change-password` in those layouts. **Most Route Handlers do not check `must_change_password`**—a client with a valid cookie could still call mutating admin/reviewer APIs until policy is tightened.
+- **Server Actions are not used** (no `"use server"`); mutations go through Route Handlers.
+
+### Request gating (Edge proxy)
+
+- **`src/proxy.ts`:** Matcher excludes `_next/static`, `_next/image`, `favicon.ico`. **Protected pages** without `session_id` redirect to `/login`. **Public pages** without cookie: `/`, `/login`, `/submit/*`.
+- **APIs:** All `/api/*` requests pass the proxy without session checks; authorization is **per handler** (`getSessionUser`, `canManageCycle`, `canManageProgram`, `is_platform_admin`, etc.).
+
+### Authorization model (admin / reviewer)
+
+- **Platform admin** (`users.is_platform_admin`): full program/cycle access; sole actor for global users, `connections` CRUD/rotate, program `POST`, **template create (`POST` templates)**, audit API, `app_config`.
+- **Program admin** (`program_admins`): `canManageProgram` / `canManageCycle` for assigned programs only; cannot create connections or list all programs. **Template list and read** (`GET /api/admin/templates`, `GET /api/admin/templates/[id]`) allow any user who passes `canAccessAdmin()` (platform **or** program admin), same gate as the connections list for scholarship admins.
+- **Reviewer:** `scholarship_memberships` + active cycle; `getReviewerRowContext` loads the sheet via the cycle’s connection and enforces **row-level** `filter_criteria_json` so arbitrary `rowId` paths cannot read other rows when the filter excludes them.
+- **Legacy route:** `PATCH /api/admin/cycles/[id]/view-settings` returns **410 Gone** (cycle-level blind settings removed; blind is per-field in the reviewer builder).
+
+### Public intake and uploads
+
+- **Routes:** `GET/POST /api/submit/[cycleId]`, `POST .../upload-token`, `POST .../remove-upload`.
+- **Submitter email:** `POST` submit path requires `@wsu.edu` (hardcoded suffix in `submit` route and intake validation), in addition to field-level email rules.
+- **Abuse:** Honeypot field on submit and upload-token; `checkRateLimit` in `intake.ts` (per cycle, hashed IP, windows for `upload-token` vs `submit`); inserts one rate-limit row per check (see tests in `intake.test.ts`).
+- **Client `submissionId`:** UUID v4 from the browser; staged blob paths include it; guessing others’ paths is infeasible under correct client behavior.
+- **IP for rate limiting:** First address in `x-forwarded-for` when present, else `127.0.0.1` — **assumes a trusted edge** (e.g. Vercel) so the left-most hop is the client or platform-provided chain.
+
+### File access
+
+- **Intake/reviewer downloads:** HMAC query params (`expires`, `signature`); verified in `intake.ts` / `reviewer-attachments.ts`. Signed URLs are **relative paths** (e.g. `/api/intake-files/...`) — they do **not** embed `NEXT_PUBLIC_APP_URL`. Blob bytes via `@vercel/blob` `get` with `BLOB_READ_WRITE_TOKEN`. Treat signed links as **capability tokens** (leak = access until expiry); they are not bound to a session cookie.
+- **Admin ZIP export:** `GET /api/admin/cycles/[id]/export-attachments` — `canManageCycle`, streamed ZIP (`attachment-export.ts` for safe entry names).
+
+### Smartsheet integration
+
+- **Base URL (fixed in code):** `https://api.smartsheet.com/2.0` in `src/lib/smartsheet.ts` (not env-configurable).
+- **Credentials:** Stored encrypted in `connections.encrypted_credentials`; decrypted only on the server for API calls and schema tests.
+- **Failures / 429:** Helpers parse JSON errors and propagate `httpStatus` / `errorCode` where applicable; write timeout optionally from `app_config` (`getSmartsheetWriteTimeoutMs` in `db.ts`).
+
+### Data layer and RLS
+
+- **Driver:** `pg` `Pool` singleton (`db.ts`): max 2 connections per warm serverless instance, idle/connection timeouts documented in code.
+- **TLS:** Optional `DATABASE_CA_CERT`; `SCHOLARSHIP_DATABASE_INSECURE_SSL` gates relaxed TLS; raw `sslmode=no-verify` in URL rejected unless that flag is set.
+- **RLS:** Migration `009_enable_public_rls.sql` enables RLS on listed `public` tables; app uses direct `pg`, not PostgREST — RLS is defense-in-depth for accidental Data API exposure.
+
+### Cron / background HTTP
+
+- **Routes:** `cleanup-blobs`, `sync-smartsheet-attachments` (see `vercel.json` schedules).
+- **Auth:** Bearer compare to `process.env.CRON_SECRET` **only if** that env var is non-empty; see Environment Variables table.
+
+### Caching
+
+- **No app-wide `unstable_cache` / `revalidateTag` / `revalidatePath` usage found** in `src/`. Many Node-dependent Route Handlers omit `export const runtime = "nodejs"` and rely on Next.js defaults when they use `pg`, `bcrypt`, or Blob.
+
+### CSRF and cookies
+
+- **SameSite=Lax** on `session_id` is the primary browser mitigation for cross-site POSTs to same-origin APIs. **There is no custom Origin/Referer check or anti-CSRF token** on sampled cookie-authenticated `POST`/`PATCH`/`DELETE` handlers — document threat model for cross-site flows if the app is ever embedded or used from unusual referrer policies.
+
+### Dependencies / verification commands
+
+- From `package.json`: `npm test` (Vitest), `npm run lint` (ESLint), `npm run build` (`next build`). **CI status (2026-04-15):** all three passed locally on this audit.
+- **`npm audit`:** reported upstream advisories affecting `next`, `vite` (dev), `picomatch`, `flatted`, `brace-expansion` — track upgrades on a separate change; not silently “fixed” in this spec pass.
 
 ---
 
@@ -64,11 +141,13 @@ Migrations live in `supabase/migrations/`.
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | Postgres connection string |
-| `ENCRYPTION_KEY` | Yes | encryption key for Smartsheet tokens, IP hashing, and signed file URLs |
-| `NEXT_PUBLIC_APP_URL` | Yes in production | public app base URL for live-form links and signed file routes |
+| `ENCRYPTION_KEY` | Yes (prod) | Master secret: drives AES-256-GCM for stored Smartsheet tokens **and** HMAC signing for intake/reviewer file URLs and intake rate-limit IP hashing (see `encryption.ts`, `intake.ts`). In non-production, file URL signing can fall back if unset—**always set in production**. |
+| `NEXT_PUBLIC_APP_URL` | Yes in production (recommended) | Absolute base URL for **operator-facing copy/paste links** (e.g. intake URL on cycle admin page). **Not** used to construct HMAC-signed intake/reviewer file URLs (those are relative `/api/...` paths in code). |
 | `BLOB_READ_WRITE_TOKEN` | Yes for file features | intake uploads, reviewer uploads, cleanup, signed access, ZIP export |
-| `CRON_SECRET` | Yes for cron routes | protects blob cleanup and Smartsheet attachment sync worker routes |
-| `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | default reviewer-assignment domain restriction |
+| `CRON_SECRET` | **Yes in any deployed environment** | Intended to protect `GET /api/admin/jobs/cleanup-blobs` and `GET /api/admin/jobs/sync-smartsheet-attachments`. **Implementation:** if this variable is **unset**, the cron routes **do not** enforce the bearer check (any caller can hit those endpoints). Operators must set `CRON_SECRET` and configure Vercel Cron to send `Authorization: Bearer <secret>`. |
+| `ALLOWED_REVIEWER_EMAIL_DOMAIN` | No | Reviewer-assignment domain when the cycle does not allow external reviewers; defaults to `wsu.edu` in code (`assignments` API) |
+| `DATABASE_CA_CERT` | No | PEM CA for strict TLS to Postgres (`db.ts`) |
+| `SCHOLARSHIP_DATABASE_INSECURE_SSL` | No | When true, uses `sslmode=no-verify` (last resort; must be explicit) |
 | `SEED_ADMIN_EMAIL` | No | local bootstrap admin email |
 | `SEED_ADMIN_PASSWORD` | Local only | password for the initial seeded admin |
 
@@ -76,6 +155,7 @@ Migrations live in `supabase/migrations/`.
 
 ## Smartsheet API Rules
 
+- **API host:** production traffic uses `https://api.smartsheet.com/2.0` (constant in `src/lib/smartsheet.ts`).
 - Never send `value: null`. Use `""` to clear.
 - Column type normalization: `column.type ?? column.columnType ?? "TEXT_NUMBER"`.
 - Surface `httpStatus` and `errorCode` on Smartsheet failures, especially `429` / `4003`.
@@ -195,6 +275,8 @@ Reviewer roles, field permissions, and role-scoped preview are now shipped on cy
 20. Public-table RLS hardening shipped: app-owned tables in `public` now enable RLS by migration so Supabase Security Advisor no longer treats them as exposed without row controls
 21. Smartsheet native attachment mirroring shipped: per-field `push_to_smartsheet`, async sync job (`/api/admin/jobs/sync-smartsheet-attachments`), simple-upload attach API, dedupe and retry policy, staged blob retention per migration `010`
 22. Reviewer/admin merged attachments updated: list API hydrates missing Smartsheet download URLs when the list endpoint omits them; synced intake files prefer **signed app URLs** (`intake_upload_synced`) so reviewers open files from Blob-backed routes unless the blob was already removed (`deleted_from_blob` → Smartsheet URL)
+23. **Living spec (2026-04-15):** `PROJECT_SPEC.md` updated to document proxy vs handler auth, `CRON_SECRET` / `ENCRYPTION_KEY` behavior, Smartsheet API base URL, RLS posture, verification commands, and a consolidated backlog — no product feature change
+24. **Proxy public-path fix (2026-04-15):** `src/proxy.ts` no longer treats every path as public via `startsWith("/")`; login redirect applies to protected pages; `/submit/*` explicitly allowed for anonymous intake
 
 ---
 
@@ -257,7 +339,7 @@ interface SavedLayoutJson {
 
 ## Smartsheet native attachment mirroring (shipped)
 
-When **Push uploaded files to Smartsheet** is enabled on an intake **file** field, each submitted PDF is copied to the nominee row as a native Smartsheet **`FILE`** attachment. Upload bytes land in **Vercel Blob** first; mirroring is **asynchronous** via `GET /api/admin/jobs/sync-smartsheet-attachments` (Vercel cron, `Authorization: Bearer ${CRON_SECRET}`). Submission success does not wait for mirroring.
+When **Push uploaded files to Smartsheet** is enabled on an intake **file** field, each submitted PDF is copied to the nominee row as a native Smartsheet **`FILE`** attachment. Upload bytes land in **Vercel Blob** first; mirroring is **asynchronous** via `GET /api/admin/jobs/sync-smartsheet-attachments` (Vercel cron; **secure only when** `CRON_SECRET` is set and the caller sends `Authorization: Bearer <CRON_SECRET>`). Submission success does not wait for mirroring.
 
 **Caps:** 30 MB per file on push-enabled fields; 100 MB on fields without push. **Schema:** migration `010_smartsheet_attachment_sync.sql` (`push_to_smartsheet`, per-file `attachment_sync_status`, aggregate status on `intake_submissions`). **Attach API:** simple (non-multipart) body upload plus helpers in `src/lib/smartsheet.ts` (list pagination, optional URL hydration from `GET /sheets/{sheetId}/attachments/{attachmentId}` when the list response omits `url`).
 
@@ -267,9 +349,23 @@ When **Push uploaded files to Smartsheet** is enabled on an intake **file** fiel
 
 ---
 
-## Remaining: Test Coverage
+## Backlog / refinements (not shipped)
 
-Still worth adding:
+Optional follow-ups — **not** implemented unless removed from this list after a code change.
+
+### Security / operations
+
+- **Login abuse:** `POST /api/auth/login` has no application-level rate limit or lockout (relies on infrastructure and bcrypt cost).
+- **Cron hardening:** Fail closed (401) when `CRON_SECRET` is unset in `NODE_ENV=production`, or validate at startup.
+- **Proxy cookie check:** Middleware only tests cookie **presence** for protected pages; invalid UUIDs still hit the server (layouts then redirect).
+- **Session lifecycle:** Optional — revoke **all** sessions on password change; align cookie `maxAge` refresh with DB `expires_at` extension if a true end-to-end sliding window is required.
+- **API `must_change_password`:** Optional — reject mutating admin/reviewer APIs when `must_change_password` is true (today enforced mainly in layouts).
+- **Cookie-authenticated API CSRF:** Optional — explicit anti-CSRF tokens or Origin checks beyond `SameSite=Lax` if product threat model requires it.
+- **Cron cleanup scalability:** `cleanup-blobs` lists all `intake/` blobs and queries DB per pathname (no `maxDuration`); monitor cost at scale.
+- **Dependency advisories:** Periodically `npm audit` / bump `next` and dev toolchain per vendor guidance.
+- **Hermetic builds:** `next build` may fetch Google Fonts from `src/app/layout.tsx`; parent-folder `package-lock.json` can confuse Turbopack root — set `turbopack.root` in `next.config.ts` or remove stray lockfiles if builds must be reproducible offline.
+
+### Test coverage
 
 - attachment export end-to-end behavior
 - reviewer upload flows
@@ -278,9 +374,7 @@ Still worth adding:
 - admin reset/delete safety flows
 - attachment sync worker and Smartsheet attach edge cases (optional expansion)
 
----
-
-## Remaining: UX and Accessibility Polish
+### UX and accessibility
 
 - mobile reviewer usability
 - builder discoverability and empty states

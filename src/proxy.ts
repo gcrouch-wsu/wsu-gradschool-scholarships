@@ -1,24 +1,33 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/"];
 const AUTH_API = "/api/auth";
+
+/**
+ * Document routes that must be reachable **without** a session cookie.
+ * Do not use `pathname.startsWith("/")` — every path starts with "/" and would
+ * bypass the login redirect for all pages.
+ */
+function isPublicDocumentPath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  if (pathname.startsWith("/submit/")) return true;
+  return false;
+}
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get("session_id")?.value;
 
-  // Allow public paths
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublicDocumentPath(pathname)) {
     return NextResponse.next();
   }
 
-  // API routes: auth endpoints are public; others need session
+  // API routes: auth endpoints are public; others need session — checked in route handlers
   if (pathname.startsWith("/api/")) {
     if (pathname.startsWith(AUTH_API)) {
       return NextResponse.next();
     }
-    // Other API routes require session - checked in route handlers
     return NextResponse.next();
   }
 
